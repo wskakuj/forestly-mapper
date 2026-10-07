@@ -9,6 +9,7 @@ Po spakowaniu przez PyInstaller ten plik staje się Forestly_Mapper.exe.
 import os
 import sys
 import pathlib
+import threading
 import traceback
 
 # Gdy program działa jako EXE, PyInstaller rozpakowuje zasoby do _MEIPASS.
@@ -54,6 +55,9 @@ def _html():
 class Api:
     def __init__(self):
         self._win = None
+        # stan zadania „Opisy na mapę" (uruchamianego w tle)
+        self._onm = {"running": False, "log": [], "idx": 0, "total": 0,
+                     "plik": "", "wynik": None}
 
     def wersja(self):
         return WERSJA
@@ -163,6 +167,66 @@ class Api:
         except Exception as e:                              # noqa: BLE001
             log.append("BŁĄD: %s" % e)
             return {"ok": False, "error": str(e), "log": log}
+
+    # ============================================== zakładka „Opisy na mapę"
+    def _onm_wybierz(self, rodzaj):
+        """Okno wyboru: folder, arkusz (.xls*), baza (.mdb) albo mapa (.MAP)."""
+        warianty = {
+            "folder": None,
+            "xlsx": [("Arkusze Excel (*.xlsx;*.xls)", "Wszystkie pliki (*.*)"),
+                     ("*.xlsx;*.xls", "Excel")],
+            "mdb": [("Bazy Access (*.mdb;*.accdb)", "Wszystkie pliki (*.*)"),
+                    ("*.mdb;*.accdb", "Access")],
+            "map": [("Mapy GEO-MAP (*.MAP;*.map)", "Wszystkie pliki (*.*)"),
+                    ("*.MAP;*.map", "Mapy GEO-MAP")],
+        }
+        if rodzaj == "folder":
+            return self.otworz_folder()
+        r = None
+        for ft in (warianty.get(rodzaj) or [None]):
+            try:
+                r = self._win.create_file_dialog(webview.OPEN_DIALOG,
+                                                 allow_multiple=False, file_types=ft)
+                break
+            except Exception:                               # noqa: BLE001
+                r = None
+        if not r:
+            return ""
+        return r[0] if isinstance(r, (list, tuple)) else r
+
+    def onm_wybierz(self, rodzaj):
+        return self._onm_wybierz(rodzaj)
+
+    def _onm_start(self, u, funkcja):
+        self._onm = {"running": True, "log": [], "idx": 0, "total": 0,
+                     "plik": "", "wynik": None}
+
+        def _run():
+            try:
+                from app.opisy_na_mape_service import SerwisOpisow
+                s = SerwisOpisow(
+                    log=lambda t: self._onm["log"].append(t),
+                    postep=lambda i, t, f: self._onm.update(idx=i, total=t, plik=f))
+                w = funkcja(s, u)
+            except Exception as e:                          # noqa: BLE001
+                w = {"ok": False, "blad": str(e)}
+            self._onm["wynik"] = w
+            self._onm["running"] = False
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {"ok": True}
+
+    def onm_uruchom(self, u):
+        """Wpisuje opisy do map (w tle). Postęp przez onm_postep()."""
+        return self._onm_start(u, lambda s, x: s.wpisz(x))
+
+    def onm_sprawdz(self, u):
+        """Sprawdza braki/różnice (w tle)."""
+        return self._onm_start(u, lambda s, x: s.sprawdz(x))
+
+    def onm_postep(self):
+        """Stan zadania: running, log, idx/total/plik, wynik."""
+        return dict(self._onm)
 
 
 def main():
