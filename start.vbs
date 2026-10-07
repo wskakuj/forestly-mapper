@@ -1,4 +1,4 @@
-' Forestly - ukladanie opisow na mapach GEO-MAP.
+' Forestly Mapper - ukladanie opisow na mapach GEO-MAP.
 ' Uruchamia program BEZ okna cmd (pythonw, ukryte).
 Option Explicit
 Dim fso, sh, folder

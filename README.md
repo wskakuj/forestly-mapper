@@ -80,3 +80,58 @@ Dwuklik na **`release.bat`** (albo `python release.py`). Kreator:
 - Skala układania ustawiana jest w oknie programu (domyślnie 1:3500).
 - Plik `app/core/uklad_opisow.py` to algorytm układania — jego numer wersji
   (`WERSJA_ALGORYTMU`) widać w dzienniku programu przy każdym uruchomieniu.
+
+---
+
+## Aktualizacje (jak w Forestly)
+
+Program sam sprawdza na GitHubie, czy jest nowsze wydanie:
+
+- **przy starcie** — cicho sprawdza wersję; gdy jest nowsza, pokazuje okno
+  „Dostępna aktualizacja!" z numerem wersji i listą zmian, i pyta, czy pobrać
+  i zainstalować. Gdy program jest aktualny, pokazuje dyskretne potwierdzenie.
+- **z przycisku „Sprawdź aktualizacje"** w nagłówku — sprawdza na żądanie.
+
+Po kliknięciu „Pobierz i zainstaluj" program uruchamia graficzny instalator
+(okno postępu), który: czeka na zamknięcie programu, pobiera nowy
+`Forestly_Mapper.exe`, robi kopię starego pliku, podmienia go i **uruchamia
+nową wersję**. Po aktualizacji pokazywany jest changelog („Co nowego").
+
+Działa to **tylko w wersji .exe** — uruchomiony ze źródeł program tego nie zrobi.
+
+> Uwaga: obecne wydanie v1.0.0 powstało PRZED dodaniem aktualizatora, więc samo
+> się nie zaktualizuje. Wypuść raz nową wersję (`release.bat` → v1.0.1) — od
+> niej wzwyż program będzie już sam proponował aktualizacje.
+
+Pliki odpowiedzialne za to: `app/updater.py` (logika) oraz `ui.html` i
+`uklad_app.py` (okno i przyciski).
+
+---
+
+## Zakładka „Zaczytywanie opisów"
+
+Program ma dwie zakładki (u góry okna): **Układanie opisów** (opisana wyżej)
+oraz **Zaczytywanie opisów** — przeniesiona z Forestly. Wpisuje opisy taksacyjne do
+poligonów map GEO-MAP (pola **A1/A2/A5**) i zapisuje wynik jako
+**`<NAZWA>_z_opisami.MAP`** obok mapy wejściowej (oryginał zostaje nietknięty).
+
+Trzy źródła opisów (do wyboru):
+
+| Źródło | Co wskazać | Dopasowanie |
+|---|---|---|
+| **Baza MIETEK** | folder z mietkiem albo pojedynczy plik DBF (pliki `O*.DBF`, `R*.DBF`) | wydzielenie z mapy (A1/A6) = wydzielenie w mietku |
+| **Excel z Forestly GO** | folder z arkuszami `.xlsx` | numer porządkowy mapy (pole `TX`) = kolumna `N` arkusza |
+| **Baza TAKSATORA** | plik `.mdb` | oddział i pododdział wydzielenia |
+
+Przy każdym wyborze ścieżki program pyta najpierw, czy chodzi o **jedną mapę**
+(plik) czy o **wiele map** (folder) — i otwiera odpowiednie okno.
+
+Przyciski:
+* **Wpisz opisy do map** — wpisuje opisy i od razu wyrównuje/obraca je na mapie
+  (jak w programie układania), zapisuje mapę wynikową i raport
+  `Opisy na mapę - raport.txt`;
+* **Sprawdź braki** — pokazuje różnice (co jest na mapie, co daje reguła),
+  zapisuje je do `Opisy na mapę - braki.csv`.
+
+Uwaga: tryb **Baza TAKSATORA** w wersji EXE korzysta ze sterownika MS Access
+(`pyodbc`); gdy go nie ma, jest zapasowy czytnik `access_parser`.

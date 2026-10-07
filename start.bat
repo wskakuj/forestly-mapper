@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 >nul
-title Forestly - ukladanie opisow (konfiguracja)
+title Forestly Mapper (konfiguracja)
 echo.
-echo   Forestly - ukladanie opisow: konfiguracja / pierwsze uruchomienie
+echo   Forestly Mapper: konfiguracja / pierwsze uruchomienie
 echo   -------------------------------------------------------------
 echo.
 where python >nul 2>nul
