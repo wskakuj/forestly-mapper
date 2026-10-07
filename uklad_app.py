@@ -155,18 +155,48 @@ class Api:
                                % len(wyniki))
                     return {"ok": False, "error": "brak map z opisami do ułożenia",
                             "log": log}
+                foldery = []
+                for w in ok:
+                    wv = w.get("wynik")
+                    if wv:
+                        foldery.append(str(pathlib.Path(wv).parent))
+                folder = foldery[0] if foldery else str(p / "ułożone")
                 return {"ok": True, "log": log, "ile_plikow": len(ok),
+                        "folder": folder,
                         "opisow": sum(w["opisow"] for w in ok),
                         "wewnatrz": sum(w["wewnatrz"] for w in ok),
                         "wysiegnik": sum(w["wysiegnik"] for w in ok)}
             r = core.uloz_plik(p, skala=skala, zapisz=True, log=log)
             if r.get("ok") and r.get("wynik"):
                 log.append("Zapisano w: %s" % r["wynik"])
+                r["folder"] = str(pathlib.Path(r["wynik"]).parent)
+            else:
+                r["folder"] = str(p.parent / "ułożone")
             r["log"] = log
             return r
         except Exception as e:                              # noqa: BLE001
             log.append("BŁĄD: %s" % e)
             return {"ok": False, "error": str(e), "log": log}
+
+    def otworz_folder_wynikow(self, sciezka):
+        """Otwiera folder z plikami finalnymi w Eksploratorze systemowym."""
+        try:
+            p = pathlib.Path(sciezka)
+            if p.is_file():
+                p = p.parent
+            if not p.exists():
+                return {"ok": False, "error": "Folder nie istnieje."}
+            if sys.platform == "win32":
+                os.startfile(str(p))                        # noqa: S606
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(p)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(p)])
+            return {"ok": True}
+        except Exception as e:                              # noqa: BLE001
+            return {"ok": False, "error": str(e)}
 
     # ============================================== zakładka „Opisy na mapę"
     # filtry plików dla poszczególnych pól
