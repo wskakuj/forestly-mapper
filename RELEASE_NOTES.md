@@ -1,3 +1,3 @@
-# Co nowego w v1.0.1
+# Co nowego w v1.0.2
 
 - 
