@@ -1,15 +1,32 @@
-"""Forestly — układanie opisów na mapach GEO-MAP.
+"""Forestly Mapper — układanie opisów na mapach GEO-MAP.
 
 Osobny program z oknem (jak Forestly), ale niezależny od Forestly:
 wczytuje .MAP (albo cały folder), układa opisy tym samym algorytmem
-i zapisuje wynik w podfolderze „ułożone” obok wejścia.
+i zapisuje wynik w podfolderze „ułożone" obok wejścia.
+
+Po spakowaniu przez PyInstaller ten plik staje się Forestly_Mapper.exe.
 """
+import os
 import sys
 import pathlib
 import traceback
 
-ROOT = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
+# Gdy program działa jako EXE, PyInstaller rozpakowuje zasoby do _MEIPASS.
+# Importujemy konfigurację z app.config (lekką — bez ciężkich bibliotek).
+_KAT = pathlib.Path(__file__).resolve().parent
+if str(_KAT) not in sys.path:
+    sys.path.insert(0, str(_KAT))
+
+try:
+    from app import config as cfg
+except Exception:                                    # noqa: BLE001
+    cfg = None
+
+ROOT = cfg.katalog_zasobow() if cfg else _KAT            # zasoby (ui.html)
+PROGRAM = cfg.katalog_programu() if cfg else _KAT        # miejsce na log
+NAZWA = cfg.APP_NAME if cfg else "Forestly Mapper"
+TYTUL = cfg.APP_TITLE if cfg else "Forestly Mapper"
+WERSJA = cfg.CURRENT_VERSION if cfg else "?"
 
 try:
     import webview
@@ -21,17 +38,62 @@ import uklad_core as core      # noqa: E402
 
 
 def _html():
-    """Wczytuje interfejs (ui.html) leżący obok programu."""
+    """Wczytuje interfejs (ui.html) leżący obok programu (albo w EXE)."""
     for nazwa in ("ui.html", "UI.HTML"):
-        p = ROOT / nazwa
-        if p.exists():
-            return p.read_text(encoding="utf-8")
+        for baza in (ROOT, _KAT, PROGRAM):
+            p = pathlib.Path(baza) / nazwa
+            if p.exists():
+                tekst = p.read_text(encoding="utf-8")
+                tekst = (tekst.replace("{{NAZWA}}", NAZWA)
+                              .replace("{{WERSJA}}", WERSJA)
+                              .replace("{{TYTUL}}", TYTUL))
+                return tekst
     raise FileNotFoundError("Brak pliku ui.html obok programu.")
 
 
 class Api:
     def __init__(self):
         self._win = None
+
+    def wersja(self):
+        return WERSJA
+
+    # ------------------------------------------------------ aktualizacje
+    def sprawdz_aktualizacje(self):
+        """Sprawdza najnowsze wydanie na GitHubie (wywoływane przy starcie
+        i z przycisku „Sprawdź aktualizacje")."""
+        try:
+            from app import updater
+            return updater.sprawdz()
+        except Exception as e:                              # noqa: BLE001
+            return {"ok": False, "blad": str(e), "obecna": WERSJA}
+
+    def pobierz_aktualizacje(self, pliki, wersja, opis=""):
+        """Pobiera i instaluje nową wersję, potem zamyka program
+        (instalator czeka na zakończenie procesu i sam uruchamia nowy plik)."""
+        try:
+            from app import updater
+        except Exception as e:                              # noqa: BLE001
+            return {"ok": False, "blad": str(e)}
+        pary = [(p[0], p[1]) for p in (pliki or []) if len(p) >= 2]
+        ok, blad = updater.pobierz_i_zainstaluj(pary, wersja, opis)
+        if not ok:
+            return {"ok": False, "blad": blad}
+        # zamykamy okno — instalator podmieni plik i uruchomi program od nowa
+        try:
+            if self._win is not None:
+                self._win.destroy()
+        except Exception:                                   # noqa: BLE001
+            pass
+        os._exit(0)
+
+    def co_nowego(self):
+        """Treść changelogu zapisana przez instalator (pokazywana po aktualizacji)."""
+        try:
+            from app import updater
+            return updater.zjedz_pending_changelog(PROGRAM) or {}
+        except Exception:                                   # noqa: BLE001
+            return {}
 
     def otworz(self):
         """Wybór pliku .MAP. Filtr podajemy w kilku wariantach — różne wersje
@@ -54,7 +116,7 @@ class Api:
                                                      allow_multiple=False,
                                                      file_types=ft)
                 break
-            except Exception:
+            except Exception:                        # noqa: BLE001
                 r = None
         if not r:
             return ""
@@ -67,7 +129,7 @@ class Api:
         return r[0] if isinstance(r, (list, tuple)) else r
 
     def uloz(self, sciezka, skala=3500):
-        """Układa opisy i ZAWSZE zapisuje wynik w podfolderze „ułożone”."""
+        """Układa opisy i ZAWSZE zapisuje wynik w podfolderze „ułożone"."""
         log = []
         try:
             skala = int(skala or 3500)
@@ -105,7 +167,7 @@ class Api:
 
 def main():
     api = Api()
-    win = webview.create_window("Forestly — układanie opisów", html=_html(),
+    win = webview.create_window(TYTUL, html=_html(),
                                 js_api=api, width=1100, height=760,
                                 min_size=(860, 600))
     api._win = win
@@ -116,10 +178,10 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:                                       # noqa: BLE001
-        # przy uruchomieniu bez konsoli (pythonw) błąd zapisujemy do pliku
+        # przy uruchomieniu bez konsoli (pythonw / EXE) błąd zapisujemy do pliku
         try:
-            (ROOT / "uklad_blad.log").write_text(traceback.format_exc(),
-                                                 encoding="utf-8")
-        except Exception:
+            (PROGRAM / "forestly_mapper_blad.log").write_text(
+                traceback.format_exc(), encoding="utf-8")
+        except Exception:                                   # noqa: BLE001
             pass
         raise

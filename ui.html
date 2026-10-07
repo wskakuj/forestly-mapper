@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pl"><head><meta charset="utf-8">
-<title>Forestly — układanie opisów</title>
+<title>{{TYTUL}}</title>
 <style>
   :root{
     --bg:#0d1117; --card:#161b22; --panel:#0f141a; --line:#242c37;
@@ -63,6 +63,25 @@
   @keyframes sp{to{transform:rotate(360deg);}}
   #busy .txt{color:#e8eef7;font-size:15px;}
   #busy .czas{color:#93a2b4;font-size:13px;}
+  button.ghost{background:transparent;border-color:var(--line);color:var(--mut);padding:6px 12px;font-size:12.5px;}
+  button.ghost:hover{color:var(--txt);border-color:#3a4453;}
+  #modal{position:fixed;inset:0;background:rgba(8,12,18,.72);display:none;align-items:center;justify-content:center;z-index:120;}
+  #modal.on{display:flex;}
+  #modal .mcard{width:min(560px,92vw);background:var(--card);border:1px solid var(--line);
+    border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.55);overflow:hidden;}
+  #modal .mhead{padding:18px 22px 6px;color:#4fa3ff;font-size:16px;font-weight:600;}
+  #modal .mmsg{padding:2px 22px 8px;color:var(--txt);font-size:13.5px;}
+  #modal .mmsg .n{color:#5fd47f;font-weight:600;}
+  #modal pre.mcl{margin:6px 22px 12px;padding:12px 14px;background:#0a0e13;border:1px solid #1b2027;
+    border-radius:10px;max-height:220px;overflow:auto;white-space:pre-wrap;color:#9fb0c3;
+    font:12.5px/1.6 "Cascadia Mono",Consolas,monospace;}
+  #modal .mbtns{display:flex;gap:10px;justify-content:flex-end;padding:14px 22px 20px;}
+  #toast{position:fixed;right:20px;bottom:20px;background:#161b22;border:1px solid var(--line);
+    border-radius:11px;padding:12px 16px;color:var(--txt);font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.4);
+    opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:130;max-width:380px;}
+  #toast.on{opacity:1;transform:none;}
+  #toast.ok{border-color:var(--green);}
+  #toast.warn{border-color:var(--amber);}
 </style></head><body>
 <header>
   <div class="logo">
@@ -72,10 +91,11 @@
     </svg>
   </div>
   <div>
-    <h1>Forestly — układanie opisów</h1>
-    <div class="sub">GEO-MAP · algorytm Forestly</div>
+    <h1>{{NAZWA}}</h1>
+    <div class="sub">GEO-MAP · układanie opisów</div>
   </div>
-  <span class="ver">wersja 2.0</span>
+  <button id="sprawdz" class="ghost" style="margin-left:auto">Sprawdź aktualizacje</button>
+  <span class="ver" style="margin-left:10px">{{WERSJA}}</span>
 </header>
 <main>
   <div class="card">
@@ -105,6 +125,16 @@
     <pre id="log"></pre>
   </div>
 </main>
+<div id="modal"><div class="mcard">
+  <div class="mhead" id="mhead">Dostępna aktualizacja!</div>
+  <div class="mmsg" id="mmsg"></div>
+  <pre class="mcl" id="mcl" style="display:none"></pre>
+  <div class="mbtns">
+    <button id="mnie">Później</button>
+    <button id="mtak" class="pri">Pobierz i zainstaluj</button>
+  </div>
+</div></div>
+<div id="toast"></div>
 <div id="busy"><div class="spin"></div><div class="txt" id="btxt">Układam opisy…</div>
   <div class="czas" id="bczas"></div></div>
 <script>
@@ -161,4 +191,54 @@ $("uloz").onclick = async () => {
     $("uloz").disabled = false;
   }
 };
+
+// ------------------------------------------------------- aktualizacje
+let aktWersja = "", aktPliki = [], aktOpis = "";
+function toast(txt, kind){
+  const t = $("toast");
+  t.textContent = txt; t.className = "on " + (kind || "");
+  clearTimeout(t._t); t._t = setTimeout(() => { t.className = ""; }, 6000);
+}
+function zamknijModal(){ $("modal").classList.remove("on"); }
+function pokazAktualizacje(r){
+  $("mmsg").innerHTML = "Dostępna jest nowa wersja programu: <span class='n'>" + r.wersja +
+    "</span><br>(Obecnie używasz: " + r.obecna + ")<br>Czy chcesz automatycznie pobrać i zainstalować aktualizację?";
+  if (r.opis && r.opis.trim()){ $("mcl").textContent = r.opis.trim(); $("mcl").style.display = "block"; }
+  else { $("mcl").style.display = "none"; }
+  aktWersja = r.wersja; aktPliki = r.pliki || []; aktOpis = r.opis || "";
+  $("modal").classList.add("on");
+}
+async function sprawdzAktualizacje(recznie){
+  if (recznie){ $("sprawdz").disabled = true; }
+  try {
+    const r = await window.pywebview.api.sprawdz_aktualizacje();
+    if (!r || !r.ok){
+      if (recznie) toast("Nie udało się sprawdzić aktualizacji (brak internetu?).", "warn");
+      return;
+    }
+    if (r.nowsza){ pokazAktualizacje(r); }
+    else if (recznie){ toast("Masz najnowszą wersję (" + r.obecna + ").", "ok"); }
+  } catch(e){
+    if (recznie) toast("Błąd sprawdzania: " + e, "warn");
+  } finally { $("sprawdz").disabled = false; }
+}
+$("sprawdz").onclick = () => sprawdzAktualizacje(true);
+$("mnie").onclick = zamknijModal;
+$("mtak").onclick = async () => {
+  $("mtak").disabled = true; $("mtak").textContent = "Pobieram…";
+  try {
+    const r = await window.pywebview.api.pobierz_aktualizacje(aktPliki, aktWersja, aktOpis);
+    if (r && !r.ok){
+      toast("Nie udało się: " + (r.blad || "?"), "warn");
+      $("mtak").disabled = false; $("mtak").textContent = "Pobierz i zainstaluj";
+    }
+  } catch(e){ toast("Błąd: " + e, "warn"); }
+};
+function startSprawdzania(){
+  setTimeout(() => sprawdzAktualizacje(false), 1200);
+  try { window.pywebview.api.co_nowego().then(cn => {
+    if (cn && cn.version) toast("Zaktualizowano do " + cn.version + ".", "ok");
+  }).catch(()=>{}); } catch(e){}
+}
+window.addEventListener("pywebviewready", startSprawdzania);
 </script></body></html>
