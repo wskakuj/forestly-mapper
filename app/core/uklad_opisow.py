@@ -30,10 +30,10 @@ import re
 # --- domyślne parametry (można nadpisać) ---
 WYSOKOSC_MM = 2.5      # wysokość pisma warstwy 5310 wg biblioteki .lay
 SKALA = 5000           # skala mapy (1:5000)
-SZER_ZNAKU = 0.62      # przybliżony stosunek szerokości znaku do wysokości
+SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.15          # mnożnik odstępu między opisami (>1 = trochę luzu)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v15 (07.10.2026) — litera z boku opisu (dwa przejścia)"
+WERSJA_ALGORYTMU = "algorytm v18 (07.10.2026) — realne rozmiary napisow + strona wysiegnika"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -335,6 +335,14 @@ def rozmiar_opisu(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
     return (szer, wys)
 
 
+MNOZNIK_LITERY = 1.2   # GEO-MAP rysuje litery 3.0 mm, opisy 2.5 mm
+
+
+def rozmiar_litery(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
+    """Rozmiar prostokąta LITERY — litery są o 20% większe niż opisy."""
+    return rozmiar_opisu(tekst, wysokosc_mm * MNOZNIK_LITERY, skala, obrot)
+
+
 def _prost(srodek, rozmiar):
     """Prostokąt (x0, y0, x1, y1) wokół środka."""
     cx, cy = srodek
@@ -553,7 +561,7 @@ def uloz(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, iteracje=12, tryb="wolne",
         lit_info = None
         if lit and o.get("linia_litery") is not None:
             ol = _off_linii(o["linia_litery"])
-            roz_l = rozmiar_opisu(lit, wysokosc_mm, skala, obrot)
+            roz_l = rozmiar_litery(lit, wysokosc_mm, skala, obrot)
             if roz_l[0] > 0:
                 pb = _prost((srodek[0] + ol[0], srodek[1] + ol[1]), roz_l)
                 przeszkody.append(pb)
@@ -1120,6 +1128,19 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
         if nowa != stara:
             linie[i] = nowa
             zmiany += 1
+    # Prostokąty wszystkich napisów (opisy + litery) — wysięgnik nie może
+    # przechodzić przez ŻADEN z nich (zasada użytkownika).
+    _napisy = []
+    for _e in elementy:
+        _n = (_e.get("litera") or "").strip()
+        if _e.get("prost"):
+            _napisy.append((_n, _e["prost"]))
+        _li2 = _e.get("lit_info")
+        if _li2 and _li2[2] and _li2[2][0] > 0:
+            _ol2 = _e.get("offset_litery") or _li2[1]
+            _napisy.append((_n, _prost((_e["srodek"][0] + _ol2[0],
+                                        _e["srodek"][1] + _ol2[1]), _li2[2])))
+
     # NA KOŃCU: popraw STRONĘ WYSIĘGNIKA z tego, co faktycznie jest w liniach.
     # Liczymy z gotowego pliku (nie z pamięci), więc flaga zawsze zgadza się
     # ze stroną, po której stoi litera.
@@ -1158,11 +1179,39 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
                 _kon = (lit_x, lit_y)
             _l = _dlugosc_odc_w_prost((_box[0], opis_y), _kon, _box)
             _p = _dlugosc_odc_w_prost((_box[2], opis_y), _kon, _box)
-            flaga = 133 if _l <= _p else 69
+            # dodatkowo: policz, ile CUDZYCH napisów przecina każde wyjście
+            _nazwa_l = (e.get("litera") or "").strip()
+            _zle_l = _zle_p = 0
+            for _n2, _r2 in _napisy:
+                if _n2 == _nazwa_l:
+                    continue
+                if _odc_przecina_prost((_box[0], opis_y), _kon, _r2):
+                    _zle_l += 1
+                if _odc_przecina_prost((_box[2], opis_y), _kon, _r2):
+                    _zle_p += 1
+            # najpierw unikamy przecinania CUDZYCH napisów, potem własnego opisu
+            if _zle_l != _zle_p:
+                flaga = 133 if _zle_l < _zle_p else 69
+            else:
+                flaga = 133 if _l <= _p else 69
         except Exception:
             flaga = 133 if lit_x <= opis_x else 69
-        nowa = "%s %s %s %s %s %s %d %s %s" % (
-            q[0], q[1], q[2], q[3], q[4], q[5], flaga, q[7], q[8])
+        # KOŃCÓWKA WYSIĘGNIKA: musi wskazywać NA LITERĘ w jej OSTATECZNYM
+        # miejscu. Wcześniej liczona była z pozycji sprzed przesunięcia litery,
+        # więc wysięgnik celował tam, gdzie litera stała wcześniej.
+        try:
+            _li = e.get("lit_info")
+            _lroz = _li[2] if _li else (0.0, 0.0)
+            if _lroz and _lroz[0] > 0:
+                kon = _koniec_wys((lit_x, lit_y), _lroz, (opis_x, opis_y))
+            else:
+                kon = (lit_x, lit_y)
+            wx = kon[0] - e["srodek"][0]
+            wy = kon[1] - e["srodek"][1]
+        except Exception:
+            wx, wy = q[7], q[8]
+        nowa = "%s %s %s %s %s %s %d %.3f %.3f" % (
+            q[0], q[1], q[2], q[3], q[4], q[5], flaga, wx, wy)
         if nowa != linie[i_op]:
             linie[i_op] = nowa
             zmiany += 1
@@ -1585,7 +1634,7 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
             continue
         ol = _off_linii_litery(mapa, o)
         lit = (o.get("litera") or "").strip()
-        roz_l = rozmiar_opisu(lit, wysokosc_mm, skala, obrot) if lit else (0.0, 0.0)
+        roz_l = rozmiar_litery(lit, wysokosc_mm, skala, obrot) if lit else (0.0, 0.0)
         li = idx_lit.get(id(o))
         el = {"obiekt": o, "tekst": o["tekst"], "pts": pts, "srodek": srodek,
               "rozmiar": roz, "offset": (0.0, 0.0),
@@ -2038,7 +2087,7 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         b = srodek_bazowy(pts)
         if b is None:
             continue
-        roz_l = rozmiar_opisu(lit, wysokosc_mm, skala, obrot)
+        roz_l = rozmiar_litery(lit, wysokosc_mm, skala, obrot)
         if roz_l[0] <= 0:
             continue
         el = _el_obj.get(id(o))
