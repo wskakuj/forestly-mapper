@@ -1,0 +1,4 @@
+# Forestly Mapper — biblioteki potrzebne do uruchomienia ze źródeł.
+# (W wersji EXE z GitHub Releases wszystko jest już w środku.)
+pywebview>=5.0
+pythonnet>=3.0

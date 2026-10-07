@@ -1,0 +1,57 @@
+name: Build Forestly Mapper
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      shell: cmd
+      run: |
+        python -m pip install --upgrade pip
+        pip install pywebview pythonnet pyinstaller pillow
+
+    - name: Verify packages installed
+      shell: cmd
+      run: pip list
+
+    - name: Build Forestly_Mapper.exe
+      shell: cmd
+      run: >
+        pyinstaller --noconfirm --onefile --windowed
+        --icon "forestly_mapper.ico"
+        --name "Forestly_Mapper"
+        --add-data "ui.html;."
+        --collect-all webview
+        --collect-all clr_loader
+        --hidden-import clr
+        --hidden-import pythonnet
+        --collect-submodules app
+        uklad_app.py
+
+    - name: Upload EXE to release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/Forestly_Mapper.exe
+        body_path: RELEASE_NOTES.md
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

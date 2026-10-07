@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# artefakty budowy PyInstaller
+dist/
+build/
+*.spec
+
+# logi i pliki robocze
+*.log
+ułożone/
+
+# duże artefakty wydania — trzymamy je w GitHub Releases, nie w repo
+*.zip
+*.exe

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8">
+<title>Forestly — układanie opisów</title>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --panel:#0f141a; --line:#242c37;
+    --txt:#d7dee8; --mut:#8b98a9; --green:#238636; --green2:#2ea043;
+    --green-soft:rgba(46,163,67,.14); --amber:#f0b132; --red:#e5534b;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:
+        radial-gradient(1100px 500px at 85% -10%,rgba(46,163,67,.10),transparent 60%),
+        var(--bg);
+       color:var(--txt);font:14px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;
+       display:flex;flex-direction:column;min-height:100%;}
+  header{display:flex;align-items:center;gap:14px;padding:14px 22px;
+         border-bottom:1px solid var(--line);background:rgba(13,17,23,.7);}
+  .logo{width:40px;height:40px;border-radius:11px;flex:none;
+        background:linear-gradient(135deg,#1f6f34,#2ea043);
+        display:flex;align-items:center;justify-content:center;}
+  .logo svg{width:23px;height:23px;}
+  header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.2px;}
+  header .sub{color:var(--mut);font-size:12.5px;}
+  .ver{margin-left:auto;color:var(--mut);font-size:12px;border:1px solid var(--line);
+       padding:3px 10px;border-radius:999px;white-space:nowrap;}
+  main{padding:22px;max-width:1000px;width:100%;margin:0 auto;flex:1;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+        padding:18px;margin-bottom:16px;box-shadow:0 1px 0 rgba(255,255,255,.02) inset;}
+  .krok{display:flex;align-items:center;gap:9px;margin:0 0 12px;color:var(--mut);
+        font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
+  .krok b{width:20px;height:20px;border-radius:6px;background:var(--green-soft);
+          color:#5fd47f;display:flex;align-items:center;justify-content:center;font-size:12px;}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  button{padding:9px 15px;border-radius:9px;border:1px solid #30363d;background:#1b222c;
+         color:var(--txt);font-size:13.5px;cursor:pointer;transition:.12s;}
+  button:hover{background:#232c38;border-color:#3a4453;}
+  button.pri{background:linear-gradient(180deg,#2ea043,#238636);border-color:#2ea043;
+             color:#fff;font-weight:600;padding:11px 22px;font-size:14.5px;}
+  button.pri:hover{background:linear-gradient(180deg,#34b34c,#2a9a3e);}
+  button:disabled{opacity:.45;cursor:default;}
+  .sciezka{font-size:13px;color:#aeb9c7;word-break:break-all;min-height:20px;
+           margin-top:12px;padding:9px 12px;border:1px dashed var(--line);border-radius:9px;
+           background:var(--panel);}
+  .hint{color:var(--mut);font-size:12.5px;margin-top:10px;}
+  .hint b{color:#7cc78f;}
+  .pole{font-size:13px;color:#aeb9c7;display:inline-flex;align-items:center;gap:7px;}
+  .pole input{width:90px;padding:7px 9px;border-radius:8px;border:1px solid #30363d;
+              background:#0f141a;color:var(--txt);font-size:13.5px;}
+  .panel{border:1px solid var(--line);border-radius:14px;background:var(--panel);
+         padding:14px 16px;}
+  .wynik{font-size:15px;margin-bottom:4px;}
+  .wynik b{color:#5fd47f;}
+  .wynik .zle{color:var(--amber);}
+  pre#log{margin:10px 0 0;padding:10px 12px;background:#0a0e13;border-radius:9px;
+          border:1px solid #1b2027;max-height:300px;overflow:auto;
+          font:12.5px/1.6 "Cascadia Mono",Consolas,monospace;color:#9fb0c3;white-space:pre-wrap;}
+  #busy{position:fixed;inset:0;background:rgba(8,12,18,.7);display:none;
+        align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:99;}
+  #busy.on{display:flex;}
+  #busy .spin{width:46px;height:46px;border-radius:50%;border:4px solid #2a3646;
+              border-top-color:#2ea043;animation:sp .9s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  #busy .txt{color:#e8eef7;font-size:15px;}
+  #busy .czas{color:#93a2b4;font-size:13px;}
+</style></head><body>
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#eafff0" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2 L7 10 H10 L6 16 H11 V21 H13 V16 H18 L14 10 H17 Z"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Forestly — układanie opisów</h1>
+    <div class="sub">GEO-MAP · algorytm Forestly</div>
+  </div>
+  <span class="ver">wersja 2.0</span>
+</header>
+<main>
+  <div class="card">
+    <div class="krok"><b>1</b> Wybierz mapę do ułożenia</div>
+    <div class="row">
+      <button id="otworz">Otwórz plik .MAP…</button>
+      <button id="folder">Otwórz folder z mapami…</button>
+    </div>
+    <div class="sciezka" id="sciezka">nie wybrano pliku</div>
+    <div class="row" style="margin-top:12px">
+      <label class="pole">Skala mapy 1:
+        <input id="skala" type="number" value="3500" min="500" max="20000" step="100">
+      </label>
+      <span class="hint" style="margin:0">(taka, jaką ustawiasz w GEO-MAP do układania)</span>
+    </div>
+    <div class="hint">Wyniki zapisują się automatycznie w podfolderze
+      <b>„ułożone”</b> obok wybranej mapy (folderu).</div>
+  </div>
+  <div class="card">
+    <div class="krok"><b>2</b> Ułóż opisy</div>
+    <div class="row">
+      <button id="uloz" class="pri" disabled>Ułóż opisy</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="wynik" id="wynik">Wybierz plik .MAP albo folder z mapami, potem kliknij „Ułóż opisy”.</div>
+    <pre id="log"></pre>
+  </div>
+</main>
+<div id="busy"><div class="spin"></div><div class="txt" id="btxt">Układam opisy…</div>
+  <div class="czas" id="bczas"></div></div>
+<script>
+let wybrany = "";
+const $ = id => document.getElementById(id);
+let t0 = 0, timer = null;
+function busy(on, txt){
+  const b = $("busy");
+  b.classList.toggle("on", !!on);
+  if (txt) $("btxt").textContent = txt;
+  if (on){
+    t0 = Date.now();
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => {
+      const s = Math.round((Date.now() - t0) / 1000);
+      $("bczas").textContent = s < 60 ? s + " s" : Math.floor(s/60) + " min " + (s%60) + " s";
+    }, 500);
+  } else if (timer){ clearInterval(timer); timer = null; }
+}
+function pokazWynik(r){
+  const el = $("wynik");
+  if (!r || !r.ok){ el.innerHTML = "Nie udało się: " + ((r && r.error) || "?"); return; }
+  if (r.ile_plikow !== undefined)
+    el.innerHTML = "Ułożono map: <b>" + r.ile_plikow + "</b> — opisów " + r.opisow +
+                   ", w środku wydzielenia <b>" + r.wewnatrz + "</b>, z wysięgnikiem <span class='zle'>" +
+                   r.wysiegnik + "</span>";
+  else
+    el.innerHTML = "Opisów: " + r.opisow + " — w środku wydzielenia <b>" + r.wewnatrz +
+                   "</b>, z wysięgnikiem <span class='zle'>" + r.wysiegnik + "</span>";
+}
+$("otworz").onclick = async () => {
+  const s = await window.pywebview.api.otworz();
+  if (!s) return;
+  wybrany = s; $("sciezka").textContent = s; $("uloz").disabled = false;
+};
+$("folder").onclick = async () => {
+  const s = await window.pywebview.api.otworz_folder();
+  if (!s) return;
+  wybrany = s; $("sciezka").textContent = s + "   (folder)"; $("uloz").disabled = false;
+};
+$("uloz").onclick = async () => {
+  if (!wybrany) return;
+  $("uloz").disabled = true; $("log").textContent = "";
+  busy(true, "Układam opisy…");
+  try {
+    const r = await window.pywebview.api.uloz(wybrany,
+                 parseInt($("skala").value, 10) || 3500);
+    pokazWynik(r);
+    $("log").textContent = (r && r.log ? r.log.join("\n") : "");
+  } catch (e) {
+    $("wynik").textContent = "Błąd: " + e;
+  } finally {
+    busy(false);
+    $("uloz").disabled = false;
+  }
+};
+</script></body></html>
