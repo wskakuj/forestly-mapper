@@ -33,7 +33,7 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.62      # przybliżony stosunek szerokości znaku do wysokości
 ODSTEP = 1.15          # mnożnik odstępu między opisami (>1 = trochę luzu)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v12 (07.10.2026) — GAP 5, wariant A, wysięgnik bez opisu"
+WERSJA_ALGORYTMU = "algorytm v15 (07.10.2026) — litera z boku opisu (dwa przejścia)"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -1481,7 +1481,7 @@ def _odl_od_krawedzi(p, pts):
     return best
 
 
-def _kand_litery_prio(prost, roz_l, home, krok=2.0, zasieg=50.0):
+def _kand_litery_prio(prost, roz_l, home, krok=2.0, zasieg=50.0, tylko_bok=False):
     """Kandydaci dla LITERY w kolejności preferencji.
 
     PRIORYTET (potwierdzony przez użytkownika): litera ma stać Z LEWEJ STRONY
@@ -1499,6 +1499,8 @@ def _kand_litery_prio(prost, roz_l, home, krok=2.0, zasieg=50.0):
     # 2) z prawej, w linii opisu
     for k in range(1, 8):
         out.append((x1 + hw + krok * k, cy))
+    if tylko_bok:
+        return out
     # 3) nad i pod opstem (wyśrodkowane w poziomie)
     for k in range(1, 8):
         out.append((cx, y0 - hh - krok * k))
@@ -1620,106 +1622,106 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
             # (0,5 potem 0,25 m). Dzięki temu opis, który mieści się
             # „na styk", zostaje W ŚRODKU, zamiast wychodzić na
             # zewnątrz z wysięgnikiem.
-            wybor_zapas = None   # dobry srodek, nawet gdy litera nie ustapi
-            for marg_wew in (1.0, 0.5, 0.25, 0.0):
-                _kands = _kand_opisu(el, krok_srodkowy)[:maks_kand]
-                # Preferuj pozycję NAJDALEJ od linii wydzielenia (czyli bliżej
-                # jego środka) — inaczej opis siada w narożniku, na liniach.
-                try:
-                    _lh = (base[0] + (li_info[1][0] if li_info else 0.0),
-                           base[1] + (li_info[1][1] if li_info else 0.0))
-                    _kands = sorted(_kands,
-                                    key=lambda q: math.hypot(
-                                        (base[0] + q[0]) - _lh[0],
-                                        (base[1] + q[1]) - _lh[1]))
-                except Exception:
-                    pass
-                if li_info is not None:
-                    # Gdy opis i litera mieszczą się RAZEM w wydzieleniu,
-                    # wybieramy takie miejsce, żeby LITERA wypadła po LEWEJ
-                    # stronie opisu (kolejność kandydatów decyduje o wyborze).
-                    _kands = sorted(_kands,
-                                    key=lambda q: 0 if (li_info[1][0] - q[0]) <= -1.0 else 1)
-                _d = DIAG.setdefault(el["tekst"], {"kand": 0, "poza_obrysem": 0,
-                                             "przecina": 0, "na_opisie": 0,
-                                             "na_literze": 0, "ok": 0})
-                for (dx, dy) in _kands:
-                    _d["kand"] += 1
-                    prost = _prost((base[0] + dx, base[1] + dy), roz)
-                    if not _box_w_srodku(_rozszerz(prost, marg_wew), pts):
-                        _d["poza_obrysem"] += 1
-                        continue
-                    if _przecina(prost):
-                        _d["przecina"] += 1
-                        continue
-                    zle = False
-                    for j2, e2 in enumerate(elementy):
-                        if j2 != i and _nakladka(_rozszerz(prost, GAP_OPIS), e2["prost"]) > 0:
-                            zle = True
-                            break
-                    if zle:
-                        _d["na_opisie"] += 1
-                        continue
-                    # opis nie może wchodzić na CUDZE litery (własna ustąpi sama)
-                    _wlasna = el["lit_info"][0] if el.get("lit_info") else None
-                    for jj in range(len(litery)):
-                        if jj != _wlasna and _nakladka(prost, litery[jj]) > 0:
-                            zle = True
-                            break
-                    if zle:
-                        _d["na_literze"] += 1
-                        continue
-                    _d["ok"] += 1
-                    # opis OK — teraz litera musi ustąpić
-                    if li_info is None:
-                        wybor = (dx, dy, prost)
-                        zn_lit = None
-                        break
-                    li, ol, roz_l = li_info
-                    home = (base[0] + ol[0], base[1] + ol[1])
-                    znal = None
-                    for (lx, ly) in _kand_litery_prio(prost, roz_l, home, krok_litery):
-                        lb = _prost((lx, ly), roz_l)
-                        if not _box_w_srodku(_rozszerz(lb, margines_litery), pts):
+            # DWA PRZEJŚCIA: najpierw litera OBOK opisu (z lewej,
+            # potem z prawej) — nawet gdy trzeba przesunąć opis. Dopiero
+            # gdy się nie da — litera nad/pod opisem.
+            for _pass_bok in (True, False):
+                wybor_zapas = None   # dobry srodek, nawet gdy litera nie ustapi
+                for marg_wew in (1.0, 0.5, 0.25, 0.0):
+                    _kands = _kand_opisu(el, krok_srodkowy)[:maks_kand]
+                    # Preferuj pozycję NAJDALEJ od linii wydzielenia (czyli bliżej
+                    # jego środka) — inaczej opis siada w narożniku, na liniach.
+                    try:
+                        _kands = sorted(_kands, key=lambda q: math.hypot(q[0], q[1]))
+                    except Exception:
+                        pass
+                    if li_info is not None:
+                        # Gdy opis i litera mieszczą się RAZEM w wydzieleniu,
+                        # wybieramy takie miejsce, żeby LITERA wypadła po LEWEJ
+                        # stronie opisu (kolejność kandydatów decyduje o wyborze).
+                        _kands = sorted(_kands,
+                                        key=lambda q: 0 if (li_info[1][0] - q[0]) <= -1.0 else 1)
+                    _d = DIAG.setdefault(el["tekst"], {"kand": 0, "poza_obrysem": 0,
+                                                 "przecina": 0, "na_opisie": 0,
+                                                 "na_literze": 0, "ok": 0})
+                    for (dx, dy) in _kands:
+                        _d["kand"] += 1
+                        prost = _prost((base[0] + dx, base[1] + dy), roz)
+                        if not _box_w_srodku(_rozszerz(prost, marg_wew), pts):
+                            _d["poza_obrysem"] += 1
                             continue
-                        if _przecina(lb):
-                            continue
-                        if _nakladka(_rozszerz(prost, max(margines_litery, 2.5)), lb) > 0:
+                        if _przecina(prost):
+                            _d["przecina"] += 1
                             continue
                         zle = False
                         for j2, e2 in enumerate(elementy):
-                            if j2 != i and _nakladka(e2["prost"], lb) > 0:
+                            if j2 != i and _nakladka(_rozszerz(prost, GAP_OPIS), e2["prost"]) > 0:
                                 zle = True
                                 break
                         if zle:
+                            _d["na_opisie"] += 1
                             continue
+                        # opis nie może wchodzić na CUDZE litery (własna ustąpi sama)
+                        _wlasna = el["lit_info"][0] if el.get("lit_info") else None
                         for jj in range(len(litery)):
-                            if jj != li and _nakladka(litery[jj], lb) > 0:
+                            if jj != _wlasna and _nakladka(prost, litery[jj]) > 0:
                                 zle = True
                                 break
                         if zle:
+                            _d["na_literze"] += 1
                             continue
-                        znal = (lx, ly, lb)
+                        _d["ok"] += 1
+                        # opis OK — teraz litera musi ustąpić
+                        if li_info is None:
+                            wybor = (dx, dy, prost)
+                            zn_lit = None
+                            break
+                        li, ol, roz_l = li_info
+                        home = (base[0] + ol[0], base[1] + ol[1])
+                        znal = None
+                        for (lx, ly) in _kand_litery_prio(prost, roz_l, home, krok_litery,
+                                                             tylko_bok=_pass_bok):
+                            lb = _prost((lx, ly), roz_l)
+                            if not _box_w_srodku(_rozszerz(lb, margines_litery), pts):
+                                continue
+                            if _przecina(lb):
+                                continue
+                            if _nakladka(_rozszerz(prost, max(margines_litery, 2.5)), lb) > 0:
+                                continue
+                            zle = False
+                            for j2, e2 in enumerate(elementy):
+                                if j2 != i and _nakladka(e2["prost"], lb) > 0:
+                                    zle = True
+                                    break
+                            if zle:
+                                continue
+                            for jj in range(len(litery)):
+                                if jj != li and _nakladka(litery[jj], lb) > 0:
+                                    zle = True
+                                    break
+                            if zle:
+                                continue
+                            znal = (lx, ly, lb)
+                            break
+                        if znal is None:
+                            # REGULA: jesli opis zmiescil sie w srodku, to ma tam
+                            # zostac — nawet gdy litera nie ma gdzie uciec.
+                            # Litera zostaje na swoim miejscu, opis jest wazniejszy.
+                            if wybor_zapas is None:
+                                wybor_zapas = (dx, dy, prost)
+                            continue
+                        if math.hypot(dx, dy) > 45.0:
+                            # daleko od obecnego miejsca — zapamietaj jako zapas,
+                            # ale szukaj dalej czegos blizej
+                            if wybor_zapas is None:
+                                wybor_zapas = (dx, dy, prost)
+                            continue
+                        wybor = (dx, dy, prost)
+                        zn_lit = (li, znal)
                         break
-                    if znal is None:
-                        # REGULA: jesli opis zmiescil sie w srodku, to ma tam
-                        # zostac — nawet gdy litera nie ma gdzie uciec.
-                        # Litera zostaje na swoim miejscu, opis jest wazniejszy.
-                        if wybor_zapas is None:
-                            wybor_zapas = (dx, dy, prost)
-                        continue
-                    if math.hypot(dx, dy) > 45.0:
-                        # daleko od obecnego miejsca — zapamietaj jako zapas,
-                        # ale szukaj dalej czegos blizej
-                        if wybor_zapas is None:
-                            wybor_zapas = (dx, dy, prost)
-                        continue
-                    wybor = (dx, dy, prost)
-                    zn_lit = (li, znal)
-                    break
 
-                if wybor is not None:
-                    break
+                    if wybor is not None:
+                        break
             if wybor is None and wybor_zapas is not None:
                 wybor = wybor_zapas
                 zn_lit = None      # litera zostaje tam, gdzie byla

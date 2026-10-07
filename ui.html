@@ -287,7 +287,7 @@ $("uloz").onclick = async () => {
                  parseInt($("skala").value, 10) || 3500);
     pokazWynik(r);
     $("log").textContent = (r && r.log ? r.log.join("\n") : "");
-    if (r && r.ok) zakonczZadanie(r.folder, "ułożono opisy (" + (r.ile_plikow || 1) + " map)");
+    if (r && r.ok && r.folder) zakonczZadanie(r.folder, "ułożono opisy (" + (r.ile_plikow || 1) + " map)");
   } catch (e) {
     $("wynik").textContent = "Błąd: " + e;
   } finally {
@@ -475,9 +475,8 @@ async function onmOdswiez(){
     if (w && w.ok){
       if (w.rows !== undefined)
         zakonczZadanie(onmStan.mapy, "sprawdzono braki");
-      else
-        zakonczZadanie(w.folder || onmStan.mapy,
-                       "zaczytano opisy (" + (w.map || 1) + " map)");
+      else if (w.zmiany > 0 && w.folder)
+        zakonczZadanie(w.folder, "zaczytano opisy (" + (w.map || 1) + " map)");
     }
   }
 }

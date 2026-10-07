@@ -88,7 +88,8 @@ def uloz_plik(plik, mm=WYSOKOSC_MM, skala=SKALA, p3=P3, zapisz=True, log=None):
         # (ten sam podfolder dla pliku i dla całego folderu).
         out_dir = plik.parent / "ułożone"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out = out_dir / plik.name
+        # nazwa pliku wynikowego z końcówką „_ulozone"
+        out = out_dir / (plik.stem + "_ulozone.MAP")
         out.write_bytes(raw)
         _log("Zapisano: %s" % out)
     _log("Opisów: %d — w środku wydzielenia: %d, z wysięgnikiem: %d"

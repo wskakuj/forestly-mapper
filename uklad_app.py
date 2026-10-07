@@ -160,7 +160,7 @@ class Api:
                     wv = w.get("wynik")
                     if wv:
                         foldery.append(str(pathlib.Path(wv).parent))
-                folder = foldery[0] if foldery else str(p / "ułożone")
+                folder = foldery[0] if foldery else ""
                 return {"ok": True, "log": log, "ile_plikow": len(ok),
                         "folder": folder,
                         "opisow": sum(w["opisow"] for w in ok),
@@ -171,7 +171,11 @@ class Api:
                 log.append("Zapisano w: %s" % r["wynik"])
                 r["folder"] = str(pathlib.Path(r["wynik"]).parent)
             else:
-                r["folder"] = str(p.parent / "ułożone")
+                # nic nie zapisano — NIE otwieramy żadnego folderu
+                r["folder"] = ""
+                log.append("Nie zapisano żadnego pliku — mapa nie ma opisów "
+                           "do ułożenia (brak napisów ze znakiem |) albo plik "
+                           "jest uszkodzony.")
             r["log"] = log
             return r
         except Exception as e:                              # noqa: BLE001
