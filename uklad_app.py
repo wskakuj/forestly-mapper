@@ -169,21 +169,25 @@ class Api:
             return {"ok": False, "error": str(e), "log": log}
 
     # ============================================== zakładka „Opisy na mapę"
-    def _onm_wybierz(self, rodzaj):
-        """Okno wyboru: folder, arkusz (.xls*), baza (.mdb) albo mapa (.MAP)."""
-        warianty = {
-            "folder": None,
-            "xlsx": [("Arkusze Excel (*.xlsx;*.xls)", "Wszystkie pliki (*.*)"),
-                     ("*.xlsx;*.xls", "Excel")],
-            "mdb": [("Bazy Access (*.mdb;*.accdb)", "Wszystkie pliki (*.*)"),
-                    ("*.mdb;*.accdb", "Access")],
-            "map": [("Mapy GEO-MAP (*.MAP;*.map)", "Wszystkie pliki (*.*)"),
-                    ("*.MAP;*.map", "Mapy GEO-MAP")],
-        }
-        if rodzaj == "folder":
+    # filtry plików dla poszczególnych pól
+    _ONM_FILTRY = {
+        "mapy": [("Mapy GEO-MAP (*.MAP;*.map)", "Wszystkie pliki (*.*)"),
+                 ("*.MAP;*.map", "Mapy GEO-MAP")],
+        "mietki": [("Pliki bazy MIETEK (*.DBF;*.dbf)", "Wszystkie pliki (*.*)"),
+                   ("*.DBF;*.dbf", "DBF")],
+        "excel": [("Arkusze Excel (*.xlsx;*.xls)", "Wszystkie pliki (*.*)"),
+                  ("*.xlsx;*.xls", "Excel")],
+        "mdb": [("Bazy Access (*.mdb;*.accdb)", "Wszystkie pliki (*.*)"),
+                ("*.mdb;*.accdb", "Access")],
+    }
+
+    def _onm_wybierz(self, rodzaj, jeden=False):
+        """Wybór ścieżki. `jeden=True` → pojedynczy PLIK (jedna mapa),
+        `jeden=False` → FOLDER (wiele map)."""
+        if not jeden:
             return self.otworz_folder()
         r = None
-        for ft in (warianty.get(rodzaj) or [None]):
+        for ft in (self._ONM_FILTRY.get(rodzaj) or [None]):
             try:
                 r = self._win.create_file_dialog(webview.OPEN_DIALOG,
                                                  allow_multiple=False, file_types=ft)
@@ -194,8 +198,8 @@ class Api:
             return ""
         return r[0] if isinstance(r, (list, tuple)) else r
 
-    def onm_wybierz(self, rodzaj):
-        return self._onm_wybierz(rodzaj)
+    def onm_wybierz(self, rodzaj, jeden=False):
+        return self._onm_wybierz(rodzaj, jeden)
 
     def _onm_start(self, u, funkcja):
         self._onm = {"running": True, "log": [], "idx": 0, "total": 0,
