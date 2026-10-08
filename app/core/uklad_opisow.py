@@ -33,7 +33,7 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v20 (07.10.2026) — ORIENTACJA napisow wzdluz osi Y (jak GEO-MAP)"
+WERSJA_ALGORYTMU = "algorytm v21 (08.10.2026) — LITERA nigdy nie zostaje na wlasnym opisie (przebieg ratunkowy)"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -1757,9 +1757,14 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                             znal = (lx, ly, lb)
                             break
                         if znal is None:
-                            # REGULA: jesli opis zmiescil sie w srodku, to ma tam
-                            # zostac — nawet gdy litera nie ma gdzie uciec.
-                            # Litera zostaje na swoim miejscu, opis jest wazniejszy.
+                            # Litera nie ma gdzie uciec. Opis może zostać
+                            # w środku TYLKO wtedy, gdy nie wchodzi na literę
+                            # w jej obecnym miejscu — inaczej litera wyląduje
+                            # na opisie. Gdy wchodzi — próbujemy kolejne,
+                            # trochę mniej środkowe miejsce.
+                            if _nakladka(_rozszerz(prost, margines_litery),
+                                         _prost(home, roz_l)) > 0:
+                                continue
                             if wybor_zapas is None:
                                 wybor_zapas = (dx, dy, prost)
                             continue
@@ -1803,6 +1808,13 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                             break
                     if zle:
                         continue
+                    # własna litera ZOSTAJE na miejscu (zn_lit=None) — więc
+                    # opis nie może wejść na nią w jej obecnym położeniu
+                    if el.get("lit_info") is not None:
+                        _ol2, _rl2 = el["lit_info"][1], el["lit_info"][2]
+                        if _nakladka(prost, _prost((base[0]+_ol2[0],
+                                                    base[1]+_ol2[1]), _rl2)) > 0:
+                            continue
                     wybor = (dx, dy, prost)
                     zn_lit = None
                     break
@@ -2106,8 +2118,14 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         if el is not None and el.get("lit_info") is None:
             el["lit_info"] = (li_i, akt, roz_l)
         lb = _prost((b[0] + akt[0], b[1] + akt[1]), roz_l)
-        if _box_w_srodku(lb, pts):
-            continue                      # już w środku — zostawiamy
+        # Literę zostawiamy, TYLKO gdy jest w środku i NIE leży na żadnym
+        # opisie. Gdy leży na opisie (własnym lub cudzym) — szukamy jej
+        # wolnego miejsca. To usuwa przypadki „litera pod opisem".
+        _na_opisie = any(_nakladka(lb, b2) > 0 for b2 in _boksy_op)
+        _na_literze = any(jj != li_i and _nakladka(lb, b2) > 0
+                          for jj, b2 in enumerate(_boksy_lit))
+        if _box_w_srodku(lb, pts) and not _na_opisie and not _na_literze:
+            continue                      # w środku i czysto — zostawiamy
         if li_i is not None and 0 <= li_i < len(_boksy_lit):
             _boksy_lit[li_i] = (0.0, 0.0, 0.0, 0.0)   # zwolnij stare miejsce
         znal = _wolna_litera(pts, roz_l)

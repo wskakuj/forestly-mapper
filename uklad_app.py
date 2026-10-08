@@ -204,15 +204,12 @@ class Api:
 
     # ============================================== zakładka „Opisy na mapę"
     # filtry plików dla poszczególnych pól
+    # filtry plików: pywebview oczekuje PAR (opis, rozszerzenia) — nie odwrotnie
     _ONM_FILTRY = {
-        "mapy": [("Mapy GEO-MAP (*.MAP;*.map)", "Wszystkie pliki (*.*)"),
-                 ("*.MAP;*.map", "Mapy GEO-MAP")],
-        "mietki": [("Pliki bazy MIETEK (*.DBF;*.dbf)", "Wszystkie pliki (*.*)"),
-                   ("*.DBF;*.dbf", "DBF")],
-        "excel": [("Arkusze Excel (*.xlsx;*.xls)", "Wszystkie pliki (*.*)"),
-                  ("*.xlsx;*.xls", "Excel")],
-        "mdb": [("Bazy Access (*.mdb;*.accdb)", "Wszystkie pliki (*.*)"),
-                ("*.mdb;*.accdb", "Access")],
+        "mapy": (("Mapy GEO-MAP", "*.map"), ("Wszystkie pliki", "*.*")),
+        "mietki": (("Bazy MIETEK (DBF)", "*.dbf"), ("Wszystkie pliki", "*.*")),
+        "excel": (("Arkusze Excel", "*.xlsx;*.xls"), ("Wszystkie pliki", "*.*")),
+        "mdb": (("Bazy Access", "*.mdb;*.accdb"), ("Wszystkie pliki", "*.*")),
     }
 
     def _onm_wybierz(self, rodzaj, jeden=False):
@@ -220,17 +217,22 @@ class Api:
         `jeden=False` → FOLDER (wiele map)."""
         if not jeden:
             return self.otworz_folder()
-        r = None
-        for ft in (self._ONM_FILTRY.get(rodzaj) or [None]):
+        # 1) z filtrem; 2) gdyby filtr nie zadziałał — okno bez filtra
+        for ft in (self._ONM_FILTRY.get(rodzaj), None):
             try:
-                r = self._win.create_file_dialog(webview.OPEN_DIALOG,
-                                                 allow_multiple=False, file_types=ft)
-                break
+                if ft is None:
+                    r = self._win.create_file_dialog(webview.OPEN_DIALOG,
+                                                     allow_multiple=False)
+                else:
+                    r = self._win.create_file_dialog(webview.OPEN_DIALOG,
+                                                     allow_multiple=False,
+                                                     file_types=ft)
             except Exception:                               # noqa: BLE001
-                r = None
-        if not r:
-            return ""
-        return r[0] if isinstance(r, (list, tuple)) else r
+                continue                                    # filtr odrzucony — próbuj bez
+            if r:
+                return r[0] if isinstance(r, (list, tuple)) else r
+            return ""                                       # anulowano
+        return ""
 
     def onm_wybierz(self, rodzaj, jeden=False):
         return self._onm_wybierz(rodzaj, jeden)
