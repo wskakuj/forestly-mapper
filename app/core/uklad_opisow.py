@@ -48,7 +48,7 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v29 (08.10.2026) — 3mx: litera i opis wysiegnikiem do wspolnego punktu"
+WERSJA_ALGORYTMU = "algorytm v32 (08.10.2026) — 3mx: wiekszy odstep litery od opisu + tylko gdy jest czyste miejsce"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -355,6 +355,7 @@ def rozmiar_opisu(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
 
 MNOZNIK_LITERY = 1.2   # GEO-MAP rysuje litery 3.0 mm, opisy 2.5 mm
 MARGINES_LIT_LIT = 1.5 # minimalny odstęp między dwiema literami (m)
+ODSTEP_LIT_OPIS = 5.0  # minimalny odstęp LITERY od OPISU (m) — nie mogą się stykać
 
 
 def rozmiar_litery(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
@@ -1868,14 +1869,16 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                 # DALeko od granicy (żeby nie leżał na linii) i tak, by nie
                 # wchodził na inne opisy. Wtedy dostaje wysięgnik.
                 _kand_out = []
-                for r in range(0, 40):
-                    for k in range(48):
-                        a = k * math.pi / 24
-                        _dd = 10.0 + r * 3.0
+                for r in range(0, 26):
+                    for k in range(24):
+                        a = k * math.pi / 12
+                        _dd = 10.0 + r * 5.0
                         dxx = math.cos(a) * _dd
                         dyy = math.sin(a) * _dd
                         p2 = _prost((base[0] + dxx, base[1] + dyy), roz)
-                        if _przecina(p2):
+                        # DOKŁADNA kontrola krawędzi własnego wydzielenia —
+                        # siatkowa była zachowawcza i odrzucała dobre miejsca
+                        if _przecina_krawedzie(p2, pts):
                             continue
                         zle = False
                         for j2, e2 in enumerate(elementy):
@@ -2172,7 +2175,8 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                 continue
             if _przecina_krawedzie(lb, pts):
                 continue
-            if any(_nakladka(lb, b2) > 0 for b2 in _boksy_op):
+            if any(_nakladka(_rozszerz(lb, max(margines_litery, 2.5)), b2) > 0
+                   for b2 in _boksy_op):
                 continue
             if any(_nakladka(_rozszerz(lb, gap_lit), b2) > 0 for b2 in _boksy_lit):
                 continue
@@ -2309,12 +2313,22 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         if (_box_w_srodku(_rozszerz(_lb3, margines_litery), _e["pts"])
                 and not _przecina_krawedzie(_lb3, _e["pts"])):
             continue                       # litera mieści się — nic nie robimy
-        # litera NIE mieści się: stawiamy ją obok opisu (może być poza)
-        _home3 = (_e["srodek"][0] + _akt3[0], _e["srodek"][1] + _akt3[1])
-        for (_lx3, _ly3) in _kand_litery_prio(_e["prost"], _rl3, _home3):
+        # Najpierw WSPÓLNY PUNKT obu wysięgników — na granicy wydzielenia,
+        # w stronę jego środka (jak w przykładzie użytkownika).
+        _base3 = _e["srodek"]
+        _opis_c3 = (_base3[0] + _e["offset"][0], _base3[1] + _e["offset"][1])
+        _kon3 = _punkt_na_granicy(_opis_c3, _base3, _e["pts"])
+        # Potem litera OBOK opisu — ale TAK, żeby jej wysięgnik do wspólnego
+        # punktu NIE przechodził przez prostokąt opisu (inaczej tnie tekst).
+        _home3 = (_base3[0] + _akt3[0], _base3[1] + _akt3[1])
+        _box_op3 = _e["prost"]
+        _znalez3 = False
+        for (_lx3, _ly3) in _kand_litery_prio(_box_op3, _rl3, _home3):
             _lb4 = _prost((_lx3, _ly3), _rl3)
-            if _nakladka(_rozszerz(_e["prost"], max(margines_litery, 2.5)), _lb4) > 0:
+            if _nakladka(_rozszerz(_box_op3, ODSTEP_LIT_OPIS), _lb4) > 0:
                 continue
+            if _odc_przecina_prost((_lx3, _ly3), _kon3, _box_op3):
+                continue                       # wysięgnik litery tnie własny opis
             _zle3 = False
             for _e2 in elementy:
                 if _e2 is _e or not _e2.get("prost"):
@@ -2331,15 +2345,16 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                     break
             if _zle3:
                 continue
-            _e["offset_litery"] = (_lx3 - _e["srodek"][0], _ly3 - _e["srodek"][1])
+            _e["offset_litery"] = (_lx3 - _base3[0], _ly3 - _base3[1])
             if 0 <= _li3 < len(litery):
                 litery[_li3] = _lb4
+            _znalez3 = True
             break
+        if not _znalez3:
+            # nie ma czystego miejsca na literę — NIE dajemy jej wysięgnika
+            # (inaczej jej linia cięłaby własny opis, np. „7bx")
+            continue
         _e["litera_poza"] = True
-        # wspólny koniec obu wysięgników — punkt na granicy w stronę środka
-        _base3 = _e["srodek"]
-        _lc3 = (_base3[0] + _e["offset_litery"][0], _base3[1] + _e["offset_litery"][1])
-        _kon3 = _punkt_na_granicy(_lc3, _base3, _e["pts"])
         _e["wsp_kon"] = (_kon3[0] - _base3[0], _kon3[1] - _base3[1])
 
     # ---- na koniec: WYSIĘGNIKI nie mogą się KRZYŻOWAĆ -------------------

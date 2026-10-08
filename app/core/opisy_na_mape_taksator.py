@@ -31,6 +31,11 @@ DRIVER_ACCESS = "Microsoft Access Driver (*.mdb, *.accdb)"
 
 # Etykiety obiektów nieleśnych (typ powierzchni w bazie -> oznaczenie na mapie).
 # Dla typów spoza tej mapy nic nie wpisujemy (pozycja trafia do „braków").
+# Typy powierzchni, dla których wolno wziąć opis z „informacji różnych"
+# (pole SUBAREA_INFO w bazie). Dla INNYCH typów ten tekst jest POMIJANY —
+# żeby nie przepisywać go bez potrzeby na mapę.
+TYPY_Z_INFORMACJAMI = {"INNE WYL"}
+
 ETYKIETY_TYPOW = {
     "L ENERG": "L.ENERG",
     "ZRĄB": "zrąb",
@@ -196,11 +201,25 @@ def _wiek(v):
     return str(int(f)) if f.is_integer() else ("%g" % f)
 
 
+def _skroc_info(t):
+    """Skraca długi tekst z „informacji różnych" do części przed przecinkiem
+    (albo średnikiem). Np. „teren rekreacyjny, fragm. użytkowany rolniczo"
+    -> „teren rekreacyjny". Gdy nie ma separatora — zostawia całość.
+    """
+    t = (t or "").strip()
+    for sep in (",", ";"):
+        if sep in t:
+            t = t.split(sep, 1)[0].strip()
+    return t
+
+
 def oznaczenie(rec):
     """Część A2 przed „|" (udział+gatunek+wiek albo etykieta obiektu nieleśnego).
 
-    Dla obiektów bez gatunku: najpierw „informacje różne" z bazy (SUBAREA_INFO,
-    np. „Rola", „Łąka", „Bagno"), a gdy puste — etykieta z typu powierzchni.
+    Dla obiektów bez gatunku: „informacje różne" z bazy (SUBAREA_INFO) bierzemy
+    TYLKO wtedy, gdy typ powierzchni to INNE WYL (np. „teren rekreacyjny, fragm.
+    użytkowany rolniczo"). W pozostałych przypadkach ten tekst jest pomijany,
+    a opis bierze się z etykiety typu powierzchni.
     """
     g = (rec.get("gatunek") or "").strip()
     if g:
@@ -208,10 +227,14 @@ def oznaczenie(rec):
         if part == "10":
             part = ""          # udział pełny (10/10) bez cyfry z przodu
         return "%s%s%s" % (part, g, _wiek(rec.get("wiek")))
-    info = (rec.get("info") or "").strip()
-    if info:
-        return info
     typ = (rec.get("typ") or "").strip()
+    # „informacje różne" (SUBAREA_INFO) bierzemy TYLKO dla typu INNE WYL.
+    # W żadnym innym przypadku — inaczej przepisywalibyśmy ten tekst
+    # na mapę tam, gdzie nie trzeba.
+    if typ in TYPY_Z_INFORMACJAMI:
+        info = _skroc_info(rec.get("info"))
+        if info:
+            return info
     lab = ETYKIETY_TYPOW.get(typ)
     if lab:
         return lab
