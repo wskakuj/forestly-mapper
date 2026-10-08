@@ -33,7 +33,7 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v21 (08.10.2026) — LITERA nigdy nie zostaje na wlasnym opisie (przebieg ratunkowy)"
+WERSJA_ALGORYTMU = "algorytm v26 (08.10.2026) — wysiegnik liczony po OSI Y (zgodnie z GEO-MAP, potwierdzone na DXF)"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -339,6 +339,7 @@ def rozmiar_opisu(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
 
 
 MNOZNIK_LITERY = 1.2   # GEO-MAP rysuje litery 3.0 mm, opisy 2.5 mm
+MARGINES_LIT_LIT = 1.5 # minimalny odstęp między dwiema literami (m)
 
 
 def rozmiar_litery(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
@@ -1077,19 +1078,21 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
             # STRONA WYSIĘGNIKA. Wysięgnik ma wychodzić z tego KOŃCA kreski
             # opisu, który leży BLIŻEJ litery — wtedy nie przecina tekstu.
             # Uwaga na kodowanie w pliku GEO-MAP (potwierdzone na mapach
-            # użytkownika): flaga 133 = koniec od strony MNIEJSZEGO X,
-            # 69 = od strony WIĘKSZEGO X — czyli odwrotnie, niż wygląda
-            # to na ekranie (podgląd GEO-MAP jest lustrzany w poziomie).
+            # użytkownika): flaga 69 = koniec od strony MNIEJSZEGO X (lewy),
+            # 133 = WIĘKSZEGO X (prawy) — tak jak rysuje to renderer
+            # zgodny z GEO-MAP.
             # Wybór końca kreski: ten, z którego odcinek do końca wysięgnika
             # NIE przecina prostokąta opisu (mniejsze przecięcie = czytelniej).
             # Gdy oba przecinają tyle samo — koniec bliżej litery.
             _box = _prost((e["srodek"][0] + dx, e["srodek"][1] + dy),
                           _roz_zapas(e["rozmiar"]))
-            _cy = (e["srodek"][1] + dy)
-            _l = _dlugosc_odc_w_prost((_box[0], _cy), kon, _box)
-            _p = _dlugosc_odc_w_prost((_box[2], _cy), kon, _box)
-            # 69 = koniec od strony MNIEJSZEGO X, 133 = WIĘKSZEGO X
-            flaga = 133 if _l <= _p else 69
+            _cx = (_box[0] + _box[2]) / 2.0
+            _l = _dlugosc_odc_w_prost((_cx, _box[1]), kon, _box)
+            _p = _dlugosc_odc_w_prost((_cx, _box[3]), kon, _box)
+            # Wysięgnik wychodzi z krawędzi wzdłuż osi Y pliku .MAP (oś X jest
+            # zamieniona z widokiem GEO-MAP — zmierzone na DXF).
+            # 69 = krawędź od strony MNIEJSZEGO Y, 133 = WIĘKSZEGO Y.
+            flaga = 69 if _l <= _p else 133
             nowa = "%s %s %.3f %.3f %.7f 1.0000000 %d %.3f %.3f" % (
                 p[0] if p else "L", p[1] if len(p) > 1 else "3",
                 dx, dy, obrot_rad, flaga, wx, wy)
@@ -1173,32 +1176,32 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
         else:
             lit_x, lit_y = opis_x, opis_y
         # strona: koniec kreski, z którego wysięgnik nie przecina opisu
-        # (133 = strona mniejszego X, 69 = większego X)
+        # (69 = strona mniejszego X (lewa), 133 = większego X (prawa))
         try:
             _box = _prost((opis_x, opis_y), _roz_zapas(e["rozmiar"]))
             try:
                 _kon = (e["srodek"][0] + float(q[7]), e["srodek"][1] + float(q[8]))
             except (ValueError, IndexError):
                 _kon = (lit_x, lit_y)
-            _l = _dlugosc_odc_w_prost((_box[0], opis_y), _kon, _box)
-            _p = _dlugosc_odc_w_prost((_box[2], opis_y), _kon, _box)
+            _l = _dlugosc_odc_w_prost((opis_x, _box[1]), _kon, _box)
+            _p = _dlugosc_odc_w_prost((opis_x, _box[3]), _kon, _box)
             # dodatkowo: policz, ile CUDZYCH napisów przecina każde wyjście
             _nazwa_l = (e.get("litera") or "").strip()
             _zle_l = _zle_p = 0
             for _n2, _r2 in _napisy:
                 if _n2 == _nazwa_l:
                     continue
-                if _odc_przecina_prost((_box[0], opis_y), _kon, _r2):
+                if _odc_przecina_prost((opis_x, _box[1]), _kon, _r2):
                     _zle_l += 1
-                if _odc_przecina_prost((_box[2], opis_y), _kon, _r2):
+                if _odc_przecina_prost((opis_x, _box[3]), _kon, _r2):
                     _zle_p += 1
             # najpierw unikamy przecinania CUDZYCH napisów, potem własnego opisu
             if _zle_l != _zle_p:
-                flaga = 133 if _zle_l < _zle_p else 69
+                flaga = 69 if _zle_l < _zle_p else 133
             else:
-                flaga = 133 if _l <= _p else 69
+                flaga = 69 if _l <= _p else 133
         except Exception:
-            flaga = 133 if lit_x <= opis_x else 69
+            flaga = 69 if lit_x <= opis_x else 133
         # KOŃCÓWKA WYSIĘGNIKA: musi wskazywać NA LITERĘ w jej OSTATECZNYM
         # miejscu. Wcześniej liczona była z pozycji sprzed przesunięcia litery,
         # więc wysięgnik celował tam, gdzie litera stała wcześniej.
@@ -1243,9 +1246,9 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
                 else:
                     kon = _punkt_na_granicy(opis_c, e["srodek"], e["pts"])
                 _box = _prost(opis_c, _roz_zapas(e["rozmiar"]))
-                _l = _dlugosc_odc_w_prost((_box[0], opis_c[1]), kon, _box)
-                _p = _dlugosc_odc_w_prost((_box[2], opis_c[1]), kon, _box)
-                flaga = 133 if _l <= _p else 69
+                _l = _dlugosc_odc_w_prost((opis_c[0], _box[1]), kon, _box)
+                _p = _dlugosc_odc_w_prost((opis_c[0], _box[3]), kon, _box)
+                flaga = 69 if _l <= _p else 133
                 tekst = "L 3 %.3f %.3f %.7f 1.0000000 %d %.3f %.3f" % (
                     dx, dy, obrot_rad, flaga,
                     kon[0] - e["srodek"][0], kon[1] - e["srodek"][1])
@@ -1749,7 +1752,8 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                             if zle:
                                 continue
                             for jj in range(len(litery)):
-                                if jj != li and _nakladka(litery[jj], lb) > 0:
+                                if jj != li and _nakladka(_rozszerz(litery[jj],
+                                                                    MARGINES_LIT_LIT), lb) > 0:
                                     zle = True
                                     break
                             if zle:
@@ -1858,13 +1862,21 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                             kon_ = _koniec_wys(lit_c, li_info[2], opis_c)
                         else:
                             kon_ = _punkt_na_granicy(opis_c, base, pts)
-                        prz = min(_dlugosc_odc_w_prost((pbox_[0], opis_c[1]), kon_, pbox_),
-                                  _dlugosc_odc_w_prost((pbox_[2], opis_c[1]), kon_, pbox_))
+                        prz = min(_dlugosc_odc_w_prost((opis_c[0], pbox_[1]), kon_, pbox_),
+                                  _dlugosc_odc_w_prost((opis_c[0], pbox_[3]), kon_, pbox_))
                         if _stroma(kon_, opis_c, roz): prz += 50.0
+                        # KLUCZOWE (zmierzone na DXF): wysięgnik wychodzi z BOKU
+                        # opisu na środku wysokości. Jeśli litera stoi NAD/POD
+                        # opisem (jej X wpada w zakres X opisu), to — niezależnie
+                        # od strony — linia MUSI przejść przez tekst. Dlatego
+                        # mocno karzemy takie położenie: litera ma być POZIOMO
+                        # poza prostokątem opisu.
+                        if pbox_[1] <= kon_[1] <= pbox_[3]:
+                            prz += 1000.0
                         # wysięgnik NIE MOŻE przechodzić przez ŻADEN opis
-                        _l_ = _dlugosc_odc_w_prost((pbox_[0], opis_c[1]), kon_, pbox_)
-                        _p_ = _dlugosc_odc_w_prost((pbox_[2], opis_c[1]), kon_, pbox_)
-                        _st = (pbox_[0] if _l_ <= _p_ else pbox_[2], opis_c[1])
+                        _l_ = _dlugosc_odc_w_prost((opis_c[0], pbox_[1]), kon_, pbox_)
+                        _p_ = _dlugosc_odc_w_prost((opis_c[0], pbox_[3]), kon_, pbox_)
+                        _st = (opis_c[0], pbox_[1] if _l_ <= _p_ else pbox_[3])
                         _x0 = min(_st[0], kon_[0]); _x1 = max(_st[0], kon_[0])
                         _y0 = min(_st[1], kon_[1]); _y1 = max(_st[1], kon_[1])
                         for _e2 in elementy:
@@ -2080,17 +2092,28 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
     _boksy_op = [e["prost"] for e in elementy if e.get("prost")]
     _boksy_lit = list(litery)
 
-    def _wolna_litera(pts, roz_l):
-        """Najbardziej środkowe wolne miejsce na literę (albo None)."""
-        for (x, y, _d) in _punkty_srodkowe(pts, krok_litery):
+    def _wolna_litera(pts, roz_l, gap_lit=None, marg=None, krok=None):
+        """Najbardziej środkowe wolne miejsce na literę (albo None).
+
+        Sprawdza krawędzie DOKŁADNIE (_przecina_krawedzie), nie przez siatkę —
+        przy wydzieleniach wklęsłych wszystkie rogi litery mogą być w środku,
+        a krawędź i tak przechodzi przez literę.
+        """
+        if gap_lit is None:
+            gap_lit = MARGINES_LIT_LIT
+        if marg is None:
+            marg = margines_litery
+        if krok is None:
+            krok = krok_litery
+        for (x, y, _d) in _punkty_srodkowe(pts, krok):
             lb = _prost((x, y), roz_l)
-            if not _box_w_srodku(_rozszerz(lb, margines_litery), pts):
+            if not _box_w_srodku(_rozszerz(lb, marg), pts):
                 continue
-            if _przecina(lb):
+            if _przecina_krawedzie(lb, pts):
                 continue
             if any(_nakladka(lb, b2) > 0 for b2 in _boksy_op):
                 continue
-            if any(_nakladka(lb, b2) > 0 for b2 in _boksy_lit):
+            if any(_nakladka(_rozszerz(lb, gap_lit), b2) > 0 for b2 in _boksy_lit):
                 continue
             return (x, y, lb)
         return None
@@ -2122,13 +2145,23 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         # opisie. Gdy leży na opisie (własnym lub cudzym) — szukamy jej
         # wolnego miejsca. To usuwa przypadki „litera pod opisem".
         _na_opisie = any(_nakladka(lb, b2) > 0 for b2 in _boksy_op)
-        _na_literze = any(jj != li_i and _nakladka(lb, b2) > 0
+        _na_literze = any(jj != li_i and _nakladka(_rozszerz(lb, MARGINES_LIT_LIT),
+                                                   b2) > 0
                           for jj, b2 in enumerate(_boksy_lit))
-        if _box_w_srodku(lb, pts) and not _na_opisie and not _na_literze:
+        # UWAGA: _box_w_srodku sprawdza tylko ROGI — przy wydzieleniu wklęsłym
+        # wszystkie rogi mogą być w środku, a krawędź i tak przechodzi przez
+        # literę. Dlatego dodatkowo sprawdzamy _przecina(lb).
+        if (_box_w_srodku(lb, pts) and not _przecina_krawedzie(lb, pts)
+                and not _na_opisie and not _na_literze):
             continue                      # w środku i czysto — zostawiamy
         if li_i is not None and 0 <= li_i < len(_boksy_lit):
             _boksy_lit[li_i] = (0.0, 0.0, 0.0, 0.0)   # zwolnij stare miejsce
-        znal = _wolna_litera(pts, roz_l)
+        # ratunek stopniowany: najpierw z odstępem, potem bez, potem bez
+        # marginesu od krawędzi, na końcu drobniejszą siatką
+        znal = (_wolna_litera(pts, roz_l)
+                or _wolna_litera(pts, roz_l, gap_lit=0.0)
+                or _wolna_litera(pts, roz_l, gap_lit=0.0, marg=0.0)
+                or _wolna_litera(pts, roz_l, gap_lit=0.0, marg=0.0, krok=1.0))
         if znal is None:
             if li_i is not None and 0 <= li_i < len(_boksy_lit):
                 _boksy_lit[li_i] = lb
