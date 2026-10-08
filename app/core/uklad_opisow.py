@@ -48,7 +48,16 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v32 (08.10.2026) — 3mx: wiekszy odstep litery od opisu + tylko gdy jest czyste miejsce"
+# =====================================================================
+# WERSJA TESTOWA: BEZ WYSIĘGNIKÓW.
+# Gdy True — program NIE wyprowadza niczego poza wydzielenie: ani opisów,
+# ani liter. Opisy i litery układają się wyłącznie w swoim wydzieleniu,
+# a wysięgniki nie są w ogóle tworzone. Ustaw False, żeby wrócić do
+# normalnego działania.
+# =====================================================================
+BEZ_WYSIEGNIKOW = True
+
+WERSJA_ALGORYTMU = "algorytm TESTOWY (08.10.2026) — BEZ WYSIĘGNIKÓW: wszystko w swoim wydzieleniu"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -1864,7 +1873,7 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                     wybor = (dx, dy, prost)
                     zn_lit = None
                     break
-            if wybor is None:
+            if wybor is None and not BEZ_WYSIEGNIKOW:
                 # Brak miejsca w środku — odsuwamy opis NA ZEWNĄTRZ, ale
                 # DALeko od granicy (żeby nie leżał na linii) i tak, by nie
                 # wchodził na inne opisy. Wtedy dostaje wysięgnik.
@@ -1954,8 +1963,8 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                                                               kk[1] - _li_home[1])))
                     wybor = _kand_out[0]
             if wybor is None:
-                el["wewnatrz"] = False
-                el["wysiegnik"] = True
+                el["wewnatrz"] = _w_wydzieleniu(el["prost"], pts)
+                el["wysiegnik"] = False        # BEZ WYSIĘGNIKÓW
                 continue
             dx, dy, prost = wybor
             if abs(dx - el["offset"][0]) > 1e-9 or abs(dy - el["offset"][1]) > 1e-9:
@@ -1965,7 +1974,7 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
             # „w środku" liczone CAŁYM prostokątem z marginesem — jeśli opis
             # wyszedł poza wydzielenie, MUSI dostać wysięgnik
             el["wewnatrz"] = _w_wydzieleniu(prost, pts)
-            el["wysiegnik"] = not el["wewnatrz"]
+            el["wysiegnik"] = (not el["wewnatrz"]) and not BEZ_WYSIEGNIKOW
             if zn_lit is not None:
                 li, (lx, ly, lb) = zn_lit
                 litery[li] = lb
@@ -2299,6 +2308,9 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                 litery[li_i] = lb
             e["offset_litery"] = (lx - base[0], ly - base[1])
             break
+
+    if BEZ_WYSIEGNIKOW:
+        return elementy          # wersja testowa: żadnych wysięgników
 
     # ---- LITERA, KTÓRA SIĘ NIE MIEŚCI (przypadek „3mx") -----------------
     # Gdy litera nie mieści się w wydzieleniu, stawiamy ją OBOK opisu i OBA
