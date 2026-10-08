@@ -24,7 +24,6 @@ import unicodedata
 from pathlib import Path
 
 from app.core import opisy_na_mape as onm
-from app.core.dbf_io import czytaj_dbf, znajdz_dbf
 
 
 def klucz_nazwy(s):
@@ -155,6 +154,7 @@ class SerwisOpisow:
             if not x["naglowki"]:
                 return sc, None, "arkusz jest pusty"
             return sc, {"naglowki": x["naglowki"], "wiersze": x["wiersze"]}, ""
+        from app.core.dbf_io import czytaj_dbf, znajdz_dbf
         o_path = znajdz_dbf(sc, "O")
         r_path = znajdz_dbf(sc, "R")
         o_recs = czytaj_dbf(o_path) if o_path else []
@@ -171,7 +171,7 @@ class SerwisOpisow:
     def _wiersze_dla_mapy(self, sciezka_mapy, zrodla, u):
         sc_zrodlo, zrodlo, blad = self._zrodlo_dla_mapy(sciezka_mapy, zrodla, u)
         if blad:
-            return None, None, blad
+            return None, None, blad, []
         mapa = onm.wczytaj_mape(sciezka_mapy)
         pom = []
         wiersze = onm.zbuduj_wiersze(mapa, u["tryb"], zrodlo,
@@ -180,7 +180,7 @@ class SerwisOpisow:
         if pom:
             self.log("  %s: pominięto %d obiektów bez oznaczenia wydzielenia."
                      % (sciezka_mapy.name, len(pom)))
-        return mapa, wiersze, ""
+        return mapa, wiersze, "", pom
 
     # ------------------------------------------- wyśrodkowanie i obrót
     def _wysrodkuj_plik(self, sciezka, obr, font_mm=2.5, skala=5000.0,
@@ -229,19 +229,23 @@ class SerwisOpisow:
             w = {"mapa": sciezka_mapy.name, "poligonow": 0, "dopasowano": 0,
                  "zmiany": 0, "plik": "", "blad": "", "niedopasowane": []}
             try:
-                mapa, wiersze, blad = self._wiersze_dla_mapy(sciezka_mapy, zrodla, u)
+                mapa, wiersze, blad, pom = self._wiersze_dla_mapy(sciezka_mapy, zrodla, u)
                 if blad:
                     w["blad"] = blad
                 else:
                     w["poligonow"] = len(wiersze)
                     w["dopasowano"] = sum(1 for r in wiersze if r["ok"])
                     w["niedopasowane"] = [r["wydz"] for r in wiersze if not r["ok"]]
+                    w["bez_oznaczenia"] = [r["wydz"] for r in wiersze
+                                           if r["ok"] and not r.get("noweA2")]
+                    w["pominieto"] = len(pom)
                     if w["dopasowano"]:
                         res = onm.zapisz_mape(mapa, mapa["path"].parent,
                                               a2=u["a2"], a5=u["a5"],
                                               wiersze=wiersze, obrot_srodek=obr)
                         w["zmiany"] = res["zmiany"]
                         w["plik"] = res["nazwa"]
+                        w["sciezka"] = str(res.get("sciezka") or "")
                         try:
                             n = self._wysrodkuj_plik(res["sciezka"], obr,
                                                      font_mm=font_mm, skala=skala,
@@ -265,6 +269,105 @@ class SerwisOpisow:
                          % sciezka_mapy.name)
 
         return self._raport(wyniki, u, "OPISY NA MAPĘ (GEO-MAP)")
+
+    # ==================================================== PEŁEN AUTOMAT
+    def zaczytaj_i_uloz(self, u):
+        """PEŁEN AUTOMAT: najpierw ZACZYTUJE opisy (jak karta 2), potem je
+        UKŁADA i zapisuje finalne mapy w folderze „zaczytane i ułożone".
+
+        Zatrzymanie przyciskiem „Stop" przerywa pracę między mapami.
+        """
+        import pathlib as _pl
+        from app.core import uklad_opisow as uk
+        import uklad_core as _core
+
+        w = self.wpisz(u)                       # zaczytanie (wyśrodkowuje też)
+        if not w.get("ok"):
+            return w
+
+        # TYLKO mapy, które faktycznie zaczytaliśmy (ze wskazanej mapy/folderu).
+        # UWAGA: nie wolno szukać rekurencyjnie — wtedy łapalibyśmy mapy
+        # z podfolderów, których użytkownik NIE wybrał.
+        pliki = []
+        for _r in (w.get("wyniki") or []):
+            _sc = _r.get("sciezka") or ""
+            if _sc and _pl.Path(_sc).exists():
+                pliki.append(_pl.Path(_sc))
+        if not pliki:
+            baza = _pl.Path(u.get("mapy") or ".")
+            szukaj = baza if baza.is_dir() else baza.parent
+            pliki = [q for q in sorted(szukaj.glob("*_z_opisami.MAP"))
+                     if "ułożone" not in q.parts
+                     and "zaczytane i ułożone" not in q.parts]
+        if not pliki:
+            self.log("Nie znalazłem map z zaczytanymi opisami do ułożenia.")
+            w["folder"] = ""
+            return w
+
+        class _Przekaz:
+            """Podstawka za listę — uloz_plik woła log.append(), my logujemy dalej."""
+            def append(self, t):
+                _self.log(t)
+
+        _self = self
+        _log = _Przekaz()
+        self.log("Układam opisy na %d mapach (folder zaczytane i ułożone)..."
+                 % len(pliki))
+        ok = wew = wys = raz = 0
+        folder = ""
+        pominiete = []
+        for idx, f in enumerate(pliki, start=1):
+            if uk.zatrzymano():
+                self.log("PRZERWANO (Stop) — pozostałe mapy pominięte.")
+                break
+            self.postep(idx, len(pliki), f.name)
+            try:
+                r = _core.uloz_plik(f, skala=int(u.get("skala") or 3500),
+                                    podfolder="zaczytane i ułożone",
+                                    log=_log)
+            except Exception as e:                          # noqa: BLE001
+                self.log("  ✗ %s: %s" % (f.name, e))
+                pominiete.append("%s — %s" % (f.name, e))
+                continue
+            if r.get("ok"):
+                ok += 1
+                wew += r.get("wewnatrz", 0)
+                wys += r.get("wysiegnik", 0)
+                raz += r.get("opisow", 0)
+                if r.get("wynik"):
+                    folder = str(_pl.Path(r["wynik"]).parent)
+            else:
+                pominiete.append("%s — %s" % (f.name,
+                                              r.get("error") or "pominięta"))
+        self.log("Gotowe — ułożone mapy: %d (w środku: %d, z wysięgnikiem: %d)"
+                 % (ok, wew, wys))
+        if pominiete:
+            self.log("POMINIĘTE przy układaniu: %d" % len(pominiete))
+            for t in pominiete:
+                self.log("   - %s" % t)
+        # dopisz wykaz pominiętych do raportu tekstowego
+        try:
+            _rap = _pl.Path(w.get("folder") or szukaj) / "Opisy na mapę - raport.txt"
+            if _rap.exists():
+                with open(_rap, "a", encoding="utf-8-sig") as _fh:
+                    _fh.write("\n" + "-" * 70 + "\nCO POMINIĘTO PRZY UKŁADANIU:\n")
+                    _fh.write("\n".join(pominiete) if pominiete else "  (nic nie pominięto)")
+                    _fh.write("\n")
+        except OSError:
+            pass
+        w2 = dict(w)
+        w2.update({"ok": True, "ulozone": ok, "folder": folder,
+                   "wewnatrz": wew, "wysiegnik": wys, "opisow": raz})
+        # kopia raportu do folderu z wynikami — żeby leżał RAZEM z mapami
+        if folder and w2.get("raport"):
+            try:
+                import shutil as _sh
+                _dst = _pl.Path(folder) / "Raport - co pominięto.txt"
+                _sh.copy2(w2["raport"], _dst)
+                w2["raport"] = str(_dst)
+            except OSError:
+                pass
+        return w2
 
     # ---------------------------------------------------------- TAKSATOR
     def _wpisz_taksator(self, u):
@@ -294,6 +397,7 @@ class SerwisOpisow:
                     w["niedopasowane"] = [r["wydz"] for r in wiersze if not r["ok"]]
                     w["bez_oznaczenia"] = [r["wydz"] for r in wiersze
                                            if r["ok"] and not r["noweA2"]]
+                    w["pominieto"] = len(pom)
                     if pom:
                         self.log("  %s: pominięto %d obiektów bez wydzielenia."
                                  % (sciezka.name, len(pom)))
@@ -301,6 +405,7 @@ class SerwisOpisow:
                         res = tk.zapisz_mape(mapa, sciezka.parent, wiersze=wiersze)
                         w["zmiany"] = res["zmiany"]
                         w["plik"] = res["nazwa"]
+                        w["sciezka"] = str(res.get("sciezka") or "")
                     self.log("  • %s: dopasowano %d/%d → %s"
                              % (sciezka.name, w["dopasowano"], w["poligonow"],
                                 w["plik"] or "(podgląd)"))
@@ -326,7 +431,7 @@ class SerwisOpisow:
         for idx, (klucz, sciezka_mapy) in enumerate(sorted(mapy.items()), start=1):
             self.postep(idx, total, sciezka_mapy.name)
             try:
-                mapa, wiersze, blad = self._wiersze_dla_mapy(sciezka_mapy, zrodla, u)
+                mapa, wiersze, blad, pom = self._wiersze_dla_mapy(sciezka_mapy, zrodla, u)
                 if blad:
                     self.log("  ⚠ %s: %s" % (sciezka_mapy.name, blad))
                 else:
@@ -423,12 +528,32 @@ class SerwisOpisow:
                 if w.get("bez_oznaczenia"):
                     linie.append("      bez oznaczenia w bazie: %s"
                                  % ", ".join(w["bez_oznaczenia"]))
+        # --- CO POMINIĘTO ---------------------------------------------
+        pom = []
+        for w in wyniki:
+            if w.get("blad"):
+                pom.append("  %s — CAŁA MAPA pominięta: %s" % (w["mapa"], w["blad"]))
+                continue
+            if w.get("pominieto"):
+                pom.append("  %s: %d obiektów bez oznaczenia wydzielenia (pominięte)"
+                           % (w["mapa"], w["pominieto"]))
+            if w.get("niedopasowane"):
+                pom.append("  %s: bez opisu w źródle — %s"
+                           % (w["mapa"], ", ".join(w["niedopasowane"][:80])))
+            if w.get("bez_oznaczenia"):
+                pom.append("  %s: dopasowane, ale bez opisu w bazie — %s"
+                           % (w["mapa"], ", ".join(w["bez_oznaczenia"][:80])))
+            if not w.get("dopasowano"):
+                pom.append("  %s: nie dopasowano ANI JEDNEGO wydzielenia" % w["mapa"])
+        linie += ["-" * 70, "CO POMINIĘTO:"]
+        linie += (pom if pom else ["  (nic nie pominięto)"])
         linie += ["-" * 70,
                   "Razem map: %d, poligonów: %d, dopasowanych: %d, zmian: %d"
                   % (len(wyniki), sp, sd, sz)]
         out = Path(u["mapy"])
         if out.is_file():
             out = out.parent
+        plik = None
         try:
             out.mkdir(parents=True, exist_ok=True)
             plik = out / "Opisy na mapę - raport.txt"
@@ -440,4 +565,4 @@ class SerwisOpisow:
                  % (len(wyniki), sp, sd, sz))
         return {"ok": True, "wyniki": wyniki, "map": len(wyniki),
                 "poligonow": sp, "dopasowano": sd, "zmiany": sz,
-                "folder": str(out)}
+                "folder": str(out), "raport": str(plik) if plik else ""}

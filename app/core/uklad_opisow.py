@@ -26,6 +26,21 @@ Zależności: tylko biblioteka standardowa.
 
 import math
 import re
+import threading
+
+# Flaga ZATRZYMANIA pracy — ustawiana przyciskiem „Stop” w programie.
+# Układanie sprawdza ją w pętlach i przerywa, NIE zapisując wyniku.
+ZATRZYMAJ = threading.Event()
+
+
+def zatrzymano():
+    """Czy użytkownik nacisnął „Stop”."""
+    return ZATRZYMAJ.is_set()
+
+
+def wyzeruj_zatrzymanie():
+    """Wołane przed każdym nowym układaniem."""
+    ZATRZYMAJ.clear()
 
 # --- domyślne parametry (można nadpisać) ---
 WYSOKOSC_MM = 2.5      # wysokość pisma warstwy 5310 wg biblioteki .lay
@@ -33,7 +48,7 @@ SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
 ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v26 (08.10.2026) — wysiegnik liczony po OSI Y (zgodnie z GEO-MAP, potwierdzone na DXF)"
+WERSJA_ALGORYTMU = "algorytm v29 (08.10.2026) — 3mx: litera i opis wysiegnikiem do wspolnego punktu"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -1074,6 +1089,10 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
             else:
                 kon = _punkt_na_granicy((e["srodek"][0] + dx, e["srodek"][1] + dy),
                                         lpoz, e["pts"])
+            if e.get("litera_poza") and e.get("wsp_kon"):
+                # „3mx": wysięgnik opisu idzie do WSPÓLNEGO punktu z literą
+                kon = (e["srodek"][0] + e["wsp_kon"][0],
+                       e["srodek"][1] + e["wsp_kon"][1])
             wx, wy = kon[0] - e["srodek"][0], kon[1] - e["srodek"][1]
             # STRONA WYSIĘGNIKA. Wysięgnik ma wychodzić z tego KOŃCA kreski
             # opisu, który leży BLIŻEJ litery — wtedy nie przecina tekstu.
@@ -1093,6 +1112,9 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
             # zamieniona z widokiem GEO-MAP — zmierzone na DXF).
             # 69 = krawędź od strony MNIEJSZEGO Y, 133 = WIĘKSZEGO Y.
             flaga = 69 if _l <= _p else 133
+            if e.get("litera_poza") and e.get("wsp_kon"):
+                flaga = (69 if (e["srodek"][1] + e["wsp_kon"][1])
+                         <= (e["srodek"][1] + dy) else 133)
             nowa = "%s %s %.3f %.3f %.7f 1.0000000 %d %.3f %.3f" % (
                 p[0] if p else "L", p[1] if len(p) > 1 else "3",
                 dx, dy, obrot_rad, flaga, wx, wy)
@@ -1126,7 +1148,16 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
             continue
         stara = linie[i]
         p = stara.split()
-        if len(p) >= 6:
+        if e.get("litera_poza") and e.get("wsp_kon"):
+            # litera poza wydzieleniem — DOSTAJE wysięgnik do tego samego punktu
+            _kat = p[4] if len(p) > 4 else ("%.7f" % obrot_rad)
+            _y_lit = e["srodek"][1] + ol[1]
+            _y_kon = e["srodek"][1] + e["wsp_kon"][1]
+            _fl = 69 if _y_kon <= _y_lit else 133
+            nowa = ("L 2 %.3f %.3f %s 1.0000000 %d %.3f %.3f"
+                    % (ol[0], ol[1], _kat, _fl,
+                       e["wsp_kon"][0], e["wsp_kon"][1]))
+        elif len(p) >= 6:
             nowa = "%s %s %.3f %.3f %.7f %s" % (p[0], p[1], ol[0], ol[1],
                                                 obrot_rad, " ".join(p[5:]))
         else:
@@ -1200,6 +1231,9 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
                 flaga = 69 if _zle_l < _zle_p else 133
             else:
                 flaga = 69 if _l <= _p else 133
+            if e.get("litera_poza") and e.get("wsp_kon"):
+                flaga = (69 if (e["srodek"][1] + e["wsp_kon"][1])
+                         <= (e["srodek"][1] + float(q[3])) else 133)
         except Exception:
             flaga = 69 if lit_x <= opis_x else 133
         # KOŃCÓWKA WYSIĘGNIKA: musi wskazywać NA LITERĘ w jej OSTATECZNYM
@@ -1208,7 +1242,10 @@ def ustaw_offsety(mapa, elementy, obrot_rad=0.0):
         try:
             _li = e.get("lit_info")
             _lroz = _li[2] if _li else (0.0, 0.0)
-            if _lroz and _lroz[0] > 0:
+            if e.get("litera_poza") and e.get("wsp_kon"):
+                kon = (e["srodek"][0] + e["wsp_kon"][0],
+                       e["srodek"][1] + e["wsp_kon"][1])
+            elif _lroz and _lroz[0] > 0:
                 kon = _koniec_wys((lit_x, lit_y), _lroz, (opis_x, opis_y))
             else:
                 kon = (lit_x, lit_y)
@@ -1665,8 +1702,12 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         return False
 
     for _ in range(max(1, iteracje)):
+        if zatrzymano():
+            break
         zmiany = 0
         for i, el in enumerate(elementy):
+            if zatrzymano():
+                break
             base = el["srodek"]
             roz = el["rozmiar"]
             pts = el["pts"]
@@ -1891,6 +1932,18 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                             if _dlugosc_odc_w_prost(_st, kon_, _b2) > 1.0:
                                 prz += 1000.0
                                 break
+                        # wysięgnik nie może też przechodzić przez CUDZĄ LITERĘ
+                        # (filtr odległości — inaczej mapa liczy się o wiele za długo)
+                        _wl2 = el["lit_info"][0] if el.get("lit_info") else None
+                        for _jj in range(len(litery)):
+                            if _jj == _wl2:
+                                continue
+                            _bl = litery[_jj]
+                            if (_bl[2] < _x0 - 1 or _bl[0] > _x1 + 1
+                                    or _bl[3] < _y0 - 1 or _bl[1] > _y1 + 1):
+                                continue
+                            if _dlugosc_odc_w_prost(_st, kon_, _bl) > 1.0:
+                                prz += 300.0
                         return prz
                     _li_home = (li_info[1] if li_info else (0.0, 0.0))
                     _kand_out.sort(key=lambda kk: (round(_przeciecie_wys(kk), 2),
@@ -1919,8 +1972,12 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
 
     # ---- na koniec: żadna litera nie może leżeć pod opisem ----
     for _ in range(6):
+        if zatrzymano():
+            break
         poprawki = 0
         for e in elementy:
+            if zatrzymano():
+                break
             li = e.get("lit_info")
             if not li:
                 continue
@@ -2007,8 +2064,12 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
     #  wiersz tekstu; szukamy miejsca poza wydzieleniem, przy którym jest
     #  czysto). PO ułożeniu liter, bo ich ruch zmienia geometrię wysięgnika.
     for _ in range(3):
+        if zatrzymano():
+            break
         poprawki = 0
         for el in elementy:
+            if zatrzymano():
+                break
             if not el.get("wysiegnik"):
                 continue
             li = el.get("lit_info")
@@ -2119,6 +2180,8 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
         return None
 
     for o in wszystkie_geo:
+        if zatrzymano():
+            break
         lit = (o.get("litera") or "").strip()
         pts = o.get("punkty") or []
         if not lit or len(pts) < 3:
@@ -2190,6 +2253,8 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
     # litery się nie mieści), przesuwamy SAMĄ LITERĘ tuż przy opis — litera
     # jest mała, więc zwykle się zmieści.
     for e in elementy:
+        if zatrzymano():
+            break
         if e.get("tylko_litera") or not e.get("lit_info"):
             continue
         li_i, ol, roz_l = e["lit_info"]
@@ -2230,5 +2295,117 @@ def uloz_wolne(mapa, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0,
                 litery[li_i] = lb
             e["offset_litery"] = (lx - base[0], ly - base[1])
             break
+
+    # ---- LITERA, KTÓRA SIĘ NIE MIEŚCI (przypadek „3mx") -----------------
+    # Gdy litera nie mieści się w wydzieleniu, stawiamy ją OBOK opisu i OBA
+    # napisy dostają wysięgnik do TEGO SAMEGO punktu w wydzieleniu
+    # (sposób wskazany przez użytkownika — przykład „3mx").
+    for _e in elementy:
+        if not _e.get("wysiegnik") or not _e.get("lit_info"):
+            continue
+        _li3, _ol3, _rl3 = _e["lit_info"]
+        _akt3 = _e.get("offset_litery") or _ol3
+        _lb3 = _prost((_e["srodek"][0] + _akt3[0], _e["srodek"][1] + _akt3[1]), _rl3)
+        if (_box_w_srodku(_rozszerz(_lb3, margines_litery), _e["pts"])
+                and not _przecina_krawedzie(_lb3, _e["pts"])):
+            continue                       # litera mieści się — nic nie robimy
+        # litera NIE mieści się: stawiamy ją obok opisu (może być poza)
+        _home3 = (_e["srodek"][0] + _akt3[0], _e["srodek"][1] + _akt3[1])
+        for (_lx3, _ly3) in _kand_litery_prio(_e["prost"], _rl3, _home3):
+            _lb4 = _prost((_lx3, _ly3), _rl3)
+            if _nakladka(_rozszerz(_e["prost"], max(margines_litery, 2.5)), _lb4) > 0:
+                continue
+            _zle3 = False
+            for _e2 in elementy:
+                if _e2 is _e or not _e2.get("prost"):
+                    continue
+                if _nakladka(_e2["prost"], _lb4) > 0:
+                    _zle3 = True
+                    break
+            if _zle3:
+                continue
+            for _jj3 in range(len(litery)):
+                if _jj3 != _li3 and _nakladka(_rozszerz(litery[_jj3], MARGINES_LIT_LIT),
+                                              _lb4) > 0:
+                    _zle3 = True
+                    break
+            if _zle3:
+                continue
+            _e["offset_litery"] = (_lx3 - _e["srodek"][0], _ly3 - _e["srodek"][1])
+            if 0 <= _li3 < len(litery):
+                litery[_li3] = _lb4
+            break
+        _e["litera_poza"] = True
+        # wspólny koniec obu wysięgników — punkt na granicy w stronę środka
+        _base3 = _e["srodek"]
+        _lc3 = (_base3[0] + _e["offset_litery"][0], _base3[1] + _e["offset_litery"][1])
+        _kon3 = _punkt_na_granicy(_lc3, _base3, _e["pts"])
+        _e["wsp_kon"] = (_kon3[0] - _base3[0], _kon3[1] - _base3[1])
+
+    # ---- na koniec: WYSIĘGNIKI nie mogą się KRZYŻOWAĆ -------------------
+    # Gdy dwa wysięgniki się przecinają, próbujemy ZAMIENIĆ tym opisom
+    # miejsca — wtedy każdy wysięgnik idzie do swojej litery z właściwej
+    # strony i zwykle krzyżowanie znika (sposób wskazany przez użytkownika).
+    def _odc_wys(_e):
+        _li = _e.get("lit_info")
+        if not _li or not _e.get("prost"):
+            return None
+        _i2, _ol, _rl = _li
+        _akt = _e.get("offset_litery") or _ol
+        _lit_c = (_e["srodek"][0] + _akt[0], _e["srodek"][1] + _akt[1])
+        _opis_c = (_e["srodek"][0] + _e["offset"][0], _e["srodek"][1] + _e["offset"][1])
+        _box = _prost(_opis_c, _roz_zapas(_e["rozmiar"]))
+        _kon = _koniec_wys(_lit_c, _rl, _opis_c) if (_rl and _rl[0] > 0) else _lit_c
+        _cx = (_box[0] + _box[2]) / 2.0
+        # flaga liczona DOKŁADNIE jak w ustaw_offsety: najpierw unikamy
+        # przecinania CUDZYCH napisów (opisy i litery), potem własnego opisu
+        _nm = (_e.get("litera") or "").strip()
+        _zle_l = _zle_p = 0
+        _cudze = [(e2.get("litera") or "").strip(), e2.get("prost")]
+        for _e2 in elementy:
+            if _e2 is _e:
+                continue
+            _b2 = _e2.get("prost")
+            if _b2 and _b2[2] > _b2[0]:
+                if _odc_przecina_prost((_cx, _box[1]), _kon, _b2):
+                    _zle_l += 1
+                if _odc_przecina_prost((_cx, _box[3]), _kon, _b2):
+                    _zle_p += 1
+        _wl3 = _e["lit_info"][0] if _e.get("lit_info") else None
+        for _jj in range(len(litery)):
+            if _jj == _wl3:
+                continue
+            _bl = litery[_jj]
+            if _bl[2] <= _bl[0]:
+                continue
+            if _odc_przecina_prost((_cx, _box[1]), _kon, _bl):
+                _zle_l += 1
+            if _odc_przecina_prost((_cx, _box[3]), _kon, _bl):
+                _zle_p += 1
+        if _zle_l != _zle_p:
+            return ((_cx, _box[1]) if _zle_l < _zle_p else (_cx, _box[3]), _kon)
+        _l = _dlugosc_odc_w_prost((_cx, _box[1]), _kon, _box)
+        _pp = _dlugosc_odc_w_prost((_cx, _box[3]), _kon, _box)
+        return ((_cx, _box[1]) if _l <= _pp else (_cx, _box[3]), _kon)
+
+    def _krzyz(a, b):
+        def _o(p, q, r):
+            return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+        return (_o(a[0], a[1], b[0]) * _o(a[0], a[1], b[1]) < 0
+                and _o(b[0], b[1], a[0]) * _o(b[0], b[1], a[1]) < 0)
+
+    _wys = [(_e, _odc_wys(_e)) for _e in elementy if _e.get("wysiegnik")]
+    _wys = [(_e, _w) for (_e, _w) in _wys if _w]
+    for _i in range(len(_wys)):
+        for _j in range(_i + 1, len(_wys)):
+            _ea, _wa = _wys[_i]
+            _eb, _wb = _wys[_j]
+            if not _krzyz(_wa, _wb):
+                continue
+            # UWAGA: zamiana WYŁĄCZONA. Geometria wysięgnika liczona tutaj
+            # nie zgadza się jeszcze co do joty z tym, co zapisuje
+            # ustaw_offsety, więc zamiana trafiała w złą parę. Wrócimy do tego
+            # po ujednoliceniu obliczeń.
+            pass
 
     return elementy

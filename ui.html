@@ -130,6 +130,7 @@
 <nav class="tabs">
   <button class="tab on" data-tab="uklad">Układanie opisów</button>
   <button class="tab" data-tab="onm">Zaczytywanie opisów</button>
+  <button class="tab" data-tab="auto">Pełen automat</button>
 </nav>
 <main>
 <section id="tab-uklad">
@@ -153,6 +154,7 @@
     <div class="krok"><b>2</b> Ułóż opisy</div>
     <div class="row">
       <button id="uloz" class="pri" disabled>Ułóż opisy</button>
+      <button id="popr" disabled title="Przerwij układanie">Stop</button>
     </div>
   </div>
   <div class="panel">
@@ -212,6 +214,61 @@
     </div>
     <pre id="onm_log"></pre>
     <div id="onm_tabela" style="display:none"></div>
+  </div>
+</section>
+
+<section id="tab-auto" hidden>
+  <div class="card">
+    <div class="krok"><b>1</b> Źródło opisów</div>
+    <div class="row">
+      <label class="pole">Źródło:
+        <select id="auto_tryb">
+          <option value="mietek">Baza MIETEK (pliki DBF)</option>
+          <option value="excel">Excel z Forestly GO</option>
+          <option value="taksator">Baza TAKSATORA (.mdb)</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="pole">Folder z mapami (.MAP):</label>
+      <button id="auto_btn_mapy">Wybierz…</button>
+      <span class="sciezka" id="auto_mapy" style="flex:1;margin-top:0">nie wybrano</span>
+    </div>
+    <div class="row" id="auto_row_mietek" style="margin-top:10px">
+      <label class="pole">Folder z Mietkiem (DBF):</label>
+      <button id="auto_btn_mietki">Wybierz…</button>
+      <span class="sciezka" id="auto_mietki" style="flex:1;margin-top:0">nie wybrano</span>
+    </div>
+    <div class="row" id="auto_row_excel" style="margin-top:10px;display:none">
+      <label class="pole">Folder z arkuszami Excel:</label>
+      <button id="auto_btn_excel">Wybierz…</button>
+      <span class="sciezka" id="auto_excel" style="flex:1;margin-top:0">nie wybrano</span>
+    </div>
+    <div class="row" id="auto_row_mdb" style="margin-top:10px;display:none">
+      <label class="pole">Plik bazy .mdb:</label>
+      <button id="auto_btn_mdb">Wybierz…</button>
+      <span class="sciezka" id="auto_mdb" style="flex:1;margin-top:0">nie wybrano</span>
+    </div>
+    <div class="hint">Wszystko naraz: najpierw zaczytam opisy do map, potem je ułożę.
+      Finalne mapy wylądują w folderze <b>„zaczytane i ułożone”</b>.</div>
+  </div>
+  <div class="card">
+    <div class="krok"><b>2</b> Zaczytaj i ułóż</div>
+    <div class="row">
+      <label class="pole">Skala 1:<input id="auto_skala" type="number" value="3500" min="500" max="20000" step="100" style="width:90px;margin-left:6px"></label>
+      <button id="auto_start" class="pri">Zaczytaj i ułóż</button>
+      <button id="auto_stop" disabled>Stop</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="wynik" id="auto_wynik">Wybierz źródło i folder z mapami, potem kliknij „Zaczytaj i ułóż”.</div>
+    <div id="auto_pasek" style="display:none;margin:10px 0">
+      <div style="height:8px;background:#1b2027;border-radius:6px;overflow:hidden">
+        <div id="auto_fill" style="height:100%;width:0;background:linear-gradient(90deg,#2ea043,#5fd47f);transition:width .2s"></div>
+      </div>
+      <div class="hint" id="auto_pasek_txt"></div>
+    </div>
+    <pre id="auto_log"></pre>
   </div>
 </section>
 </main>
@@ -278,23 +335,126 @@ $("folder").onclick = async () => {
   if (!s) return;
   wybrany = s; $("sciezka").textContent = s + "   (folder)"; $("uloz").disabled = false;
 };
+let ulozTimer = null;
 $("uloz").onclick = async () => {
   if (!wybrany) return;
-  $("uloz").disabled = true; $("log").textContent = "";
+  $("uloz").disabled = true; $("popr").disabled = false;
+  $("log").textContent = "";
   busy(true, "Układam opisy…");
+  let r;
   try {
-    const r = await window.pywebview.api.uloz(wybrany,
-                 parseInt($("skala").value, 10) || 3500);
-    pokazWynik(r);
-    $("log").textContent = (r && r.log ? r.log.join("\n") : "");
-    if (r && r.ok && r.folder) zakonczZadanie(r.folder, "ułożono opisy (" + (r.ile_plikow || 1) + " map)");
-  } catch (e) {
-    $("wynik").textContent = "Błąd: " + e;
-  } finally {
-    busy(false);
-    $("uloz").disabled = false;
+    r = await window.pywebview.api.uloz(wybrany,
+              parseInt($("skala").value, 10) || 3500);
+  } catch (e) { r = {ok:false, error:String(e)}; }
+  if (!r || !r.ok){
+    $("wynik").textContent = "Nie udało się wystartować: " + ((r && r.error) || "?");
+    busy(false); $("uloz").disabled = false; $("popr").disabled = true; return;
   }
+  if (ulozTimer) clearInterval(ulozTimer);
+  ulozTimer = setInterval(ulozOdswiez, 500);
 };
+async function ulozOdswiez(){
+  let st;
+  try { st = await window.pywebview.api.uloz_postep(); } catch (e) { return; }
+  if (st.log && st.log.length){
+    $("log").textContent = st.log.join("\n");
+    $("log").scrollTop = $("log").scrollHeight;
+  }
+  if (!st.running){
+    clearInterval(ulozTimer); ulozTimer = null;
+    busy(false); $("uloz").disabled = false; $("popr").disabled = true;
+    const w = st.wynik;
+    if (w && w.log) $("log").textContent = w.log.join("\n");
+    if (w && w.zatrzymano){
+      $("wynik").textContent = "Zatrzymano na Twoje żądanie — ta mapa nie została zapisana.";
+    } else {
+      pokazWynik(w);
+      if (w && w.ok && w.folder)
+        zakonczZadanie(w.folder, "ułożono opisy (" + (w.ile_plikow || 1) + " map)");
+    }
+  }
+}
+$("popr").onclick = () => {
+  $("popr").disabled = true; busy(true, "Zatrzymuję…");
+  try { window.pywebview.api.zatrzymaj(); } catch (e) {}
+};
+
+// ------------------------------------------------- PEŁEN AUTOMAT (karta 3)
+let autoStan = {mapy:"", mietki:"", excel:"", mdb:""};
+let autoTimer = null;
+function autoPokazTryb(){
+  const t = $("auto_tryb").value;
+  $("auto_row_mietek").style.display = (t === "mietek")   ? "flex" : "none";
+  $("auto_row_excel").style.display  = (t === "excel")    ? "flex" : "none";
+  $("auto_row_mdb").style.display    = (t === "taksator") ? "flex" : "none";
+}
+$("auto_tryb").onchange = autoPokazTryb; autoPokazTryb();
+async function autoWybierz(rodzaj, pole, tytul){
+  const z = await pytajZakres(tytul);
+  if (!z) return;
+  const sc = await window.pywebview.api.onm_wybierz(rodzaj, z === "jeden");
+  autoStan[pole] = sc; $("auto_" + pole).textContent = sc || "nie wybrano";
+}
+$("auto_btn_mapy").onclick   = () => autoWybierz("mapy", "mapy",   "Mapy do zaczytania");
+$("auto_btn_mietki").onclick = () => autoWybierz("mietki", "mietki", "Baza MIETEK (DBF)");
+$("auto_btn_excel").onclick  = () => autoWybierz("excel", "excel",  "Excel z Forestly GO");
+$("auto_btn_mdb").onclick    = () => autoWybierz("mdb", "mdb",      "Baza TAKSATORA (.mdb)");
+function autoUstawienia(){
+  return {tryb:$("auto_tryb").value, mapy:autoStan.mapy, mietki:autoStan.mietki,
+          excel:autoStan.excel, mdb:autoStan.mdb, klucz:"TX", kol_nr:"N",
+          a2:true, a5:true, font_mm:"2.5", p3:"-0.25",
+          skala:String(parseInt($("auto_skala").value, 10) || 3500)};
+}
+$("auto_start").onclick = async () => {
+  const u = autoUstawienia();
+  if (!u.mapy){ $("auto_wynik").textContent = "Najpierw wybierz folder z mapami."; return; }
+  if (u.tryb === "mietek" && !u.mietki){ $("auto_wynik").textContent = "Wybierz folder z Mietkiem."; return; }
+  if (u.tryb === "excel" && !u.excel){ $("auto_wynik").textContent = "Wybierz folder z arkuszami Excel."; return; }
+  if (u.tryb === "taksator" && !u.mdb){ $("auto_wynik").textContent = "Wybierz plik bazy .mdb."; return; }
+  $("auto_start").disabled = true; $("auto_stop").disabled = false;
+  $("auto_log").textContent = ""; $("auto_wynik").textContent = "Zaczytuję opisy, potem układam…";
+  $("auto_pasek").style.display = "block"; $("auto_fill").style.width = "0%";
+  let r;
+  try { r = await window.pywebview.api.auto_uruchom(u); }
+  catch (e) { r = {ok:false, blad:String(e)}; }
+  if (!r || !r.ok){
+    $("auto_wynik").textContent = "Nie udało się wystartować: " + ((r && r.blad) || "?");
+    $("auto_start").disabled = false; $("auto_stop").disabled = true;
+    $("auto_pasek").style.display = "none"; return;
+  }
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(autoOdswiez, 400);
+};
+$("auto_stop").onclick = () => {
+  $("auto_stop").disabled = true; $("auto_wynik").textContent = "Zatrzymuję…";
+  try { window.pywebview.api.zatrzymaj(); } catch (e) {}
+};
+async function autoOdswiez(){
+  let st;
+  try { st = await window.pywebview.api.onm_postep(); } catch (e) { return; }
+  $("auto_log").textContent = (st.log || []).join("\n");
+  $("auto_log").scrollTop = $("auto_log").scrollHeight;
+  if (st.total){
+    $("auto_fill").style.width = Math.round(100 * st.idx / st.total) + "%";
+    $("auto_pasek_txt").textContent = st.idx + " / " + st.total + "   " + (st.plik || "");
+  }
+  if (!st.running){
+    clearInterval(autoTimer); autoTimer = null;
+    $("auto_start").disabled = false; $("auto_stop").disabled = true;
+    $("auto_pasek").style.display = "none";
+    const w = st.wynik || {};
+    if (!w.ok){
+      $("auto_wynik").innerHTML = "Nie udało się: " + esc(w.blad || "?");
+    } else if (w.ulozone === undefined){
+      $("auto_wynik").innerHTML = "Zaczytano opisy w <b>" + (w.map || 1) + "</b> mapach, ale nie było czego układać.";
+    } else {
+      $("auto_wynik").innerHTML = "Gotowe — map: <b>" + (w.map || 1) + "</b>, ułożonych: <b>" +
+        w.ulozone + "</b>, opisów: " + (w.opisow || 0) + ", w środku: " + (w.wewnatrz || 0) +
+        ", z wysięgnikiem: " + (w.wysiegnik || 0) + "." + raportLink(w);
+      if (w.folder) zakonczZadanie(w.folder, "zaczytano i ułożono opisy");
+    }
+  }
+}
 
 // ------------------------------------------------------- aktualizacje
 let aktWersja = "", aktPliki = [], aktOpis = "";
@@ -480,6 +640,17 @@ async function onmOdswiez(){
     }
   }
 }
+let ostatniRaport = "";
+function raportLink(w){
+  ostatniRaport = (w && w.raport) ? w.raport : "";
+  if (!ostatniRaport) return "";
+  setTimeout(() => {
+    const a = $("raport_link");
+    if (a) a.onclick = (e) => { e.preventDefault();
+      window.pywebview.api.otworz_raport(ostatniRaport); };
+  }, 0);
+  return ' <a href="#" id="raport_link" style="color:#5fd47f;text-decoration:underline">Otwórz raport</a>';
+}
 function onmPokazWynik(w){
   if (!w){ $("onm_wynik").textContent = "Zakończono."; return; }
   if (!w.ok){ $("onm_wynik").innerHTML = "Nie udało się: " + esc(w.blad || "?"); return; }
@@ -488,7 +659,7 @@ function onmPokazWynik(w){
     onmTabela(w.rows); return;
   }
   $("onm_wynik").innerHTML = "Gotowe — map: <b>" + w.map + "</b>, poligonów " + w.poligonow +
-    ", dopasowanych <b>" + w.dopasowano + "</b>, zmian " + w.zmiany + ".";
+    ", dopasowanych <b>" + w.dopasowano + "</b>, zmian " + w.zmiany + "." + raportLink(w);
 }
 function onmTabela(rows){
   const el = $("onm_tabela"); el.style.display = "block";

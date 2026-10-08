@@ -133,6 +133,45 @@ class Api:
         return r[0] if isinstance(r, (list, tuple)) else r
 
     def uloz(self, sciezka, skala=3500):
+        """Uruchamia układanie w TLE — dzięki temu działa przycisk „Stop".
+
+        Wynik i log odbiera się przez uloz_postep(). Stop: zatrzymaj().
+        """
+        if getattr(self, "_uloz_stan", {}).get("running"):
+            return {"ok": False, "error": "układanie już trwa"}
+        try:
+            from app.core import uklad_opisow as _uk
+            _uk.wyzeruj_zatrzymanie()
+        except Exception:                                   # noqa: BLE001
+            pass
+        self._uloz_stan = {"running": True, "log": [], "wynik": None}
+
+        def _run():
+            try:
+                w = self._uloz(sciezka, skala)
+            except Exception as e:                          # noqa: BLE001
+                w = {"ok": False, "error": str(e), "log": [str(e)]}
+            self._uloz_stan["wynik"] = w
+            self._uloz_stan["log"] = w.get("log", [])
+            self._uloz_stan["running"] = False
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {"ok": True, "started": True}
+
+    def uloz_postep(self):
+        """Stan układania: running, log, wynik."""
+        return dict(getattr(self, "_uloz_stan", {"running": False}))
+
+    def zatrzymaj(self):
+        """Przycisk „Stop" — przerywa układanie po bieżącym kroku."""
+        try:
+            from app.core import uklad_opisow as _uk
+            _uk.ZATRZYMAJ.set()
+        except Exception:                                   # noqa: BLE001
+            pass
+        return {"ok": True}
+
+    def _uloz(self, sciezka, skala=3500):
         """Układa opisy i ZAWSZE zapisuje wynik w podfolderze „ułożone"."""
         log = []
         try:
@@ -181,6 +220,26 @@ class Api:
         except Exception as e:                              # noqa: BLE001
             log.append("BŁĄD: %s" % e)
             return {"ok": False, "error": str(e), "log": log}
+
+    def otworz_raport(self, sciezka):
+        """Otwiera plik raportu (albo jego folder, gdy pliku brak)."""
+        try:
+            p = pathlib.Path(sciezka)
+            if p.is_dir():
+                p = p / "Opisy na mapę - raport.txt"
+            if not p.exists():
+                return {"ok": False, "error": "Nie znalazłem raportu."}
+            if sys.platform == "win32":
+                os.startfile(str(p))                        # noqa: S606
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(p)])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(p)])
+            return {"ok": True}
+        except Exception as e:                              # noqa: BLE001
+            return {"ok": False, "error": str(e)}
 
     def otworz_folder_wynikow(self, sciezka):
         """Otwiera folder z plikami finalnymi w Eksploratorze systemowym."""
@@ -255,6 +314,11 @@ class Api:
 
         threading.Thread(target=_run, daemon=True).start()
         return {"ok": True}
+
+    def auto_uruchom(self, u):
+        """PEŁEN AUTOMAT: najpierw zaczytuje opisy, potem układa je na mapach
+        i zapisuje wynik w folderze „zaczytane i ułożone"."""
+        return self._onm_start(u, lambda s, x: s.zaczytaj_i_uloz(x))
 
     def onm_uruchom(self, u):
         """Wpisuje opisy do map (w tle). Postęp przez onm_postep()."""

@@ -58,7 +58,8 @@ def statystyki(raw):
     return wew, wys, razem
 
 
-def uloz_plik(plik, mm=WYSOKOSC_MM, skala=SKALA, p3=P3, zapisz=True, log=None):
+def uloz_plik(plik, mm=WYSOKOSC_MM, skala=SKALA, p3=P3, zapisz=True, log=None,
+              podfolder="ułożone"):
     """Układa opisy w jednym pliku .MAP. Zwraca słownik z wynikiem."""
     def _log(s):
         if log is not None:
@@ -74,6 +75,10 @@ def uloz_plik(plik, mm=WYSOKOSC_MM, skala=SKALA, p3=P3, zapisz=True, log=None):
     _log("Układam (czcionka %s mm, skala 1:%s, obrót %s)…" % (mm, skala, p3))
     el = uk.uloz(mapa, wysokosc_mm=mm, skala=skala, obrot=obrot,
                  tylko_srodek=False)
+    if uk.zatrzymano():
+        _log("PRZERWANO (Stop) — ta mapa NIE została zapisana.")
+        return {"ok": False, "zatrzymano": True, "opisow": 0, "wewnatrz": 0,
+                "wysiegnik": 0, "error": "przerwano przez użytkownika"}
     if not el:
         _log("W tej mapie nie ma opisów do ułożenia — plik NIE został zmieniony.")
         _log("(Opisy to napisy w liniach „L 3”, np. „SO31|0.52”. Ta mapa ich nie ma.)")
@@ -86,7 +91,7 @@ def uloz_plik(plik, mm=WYSOKOSC_MM, skala=SKALA, p3=P3, zapisz=True, log=None):
     if zapisz:
         # Wynik zapisujemy w podfolderze „ułożone” obok mapy wejściowej
         # (ten sam podfolder dla pliku i dla całego folderu).
-        out_dir = plik.parent / "ułożone"
+        out_dir = plik.parent / podfolder
         out_dir.mkdir(parents=True, exist_ok=True)
         # nazwa pliku wynikowego z końcówką „_ulozone"
         out = out_dir / (plik.stem + "_ulozone.MAP")
@@ -118,6 +123,10 @@ def uloz_folder(folder, log=None, **kw):
         log.append("Znaleziono plików .MAP: %d (w: %s)" % (len(pliki), folder))
     wyniki = []
     for f in pliki:
+        if uk.zatrzymano():
+            if log is not None:
+                log.append("PRZERWANO (Stop) — pozostałe mapy pominięte.")
+            break
         try:
             wyniki.append(uloz_plik(f, log=log, **kw))
         except Exception as e:                              # noqa: BLE001
