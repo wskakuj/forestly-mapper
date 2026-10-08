@@ -12,7 +12,7 @@ from pathlib import Path
 
 # --- WERSJA I AKTUALIZACJA ---
 # Ten numer podnosi release.py przy wypuszczaniu nowej wersji (tag na GitHubie).
-CURRENT_VERSION = "v1.0.8"
+CURRENT_VERSION = "v1.0.9"
 
 # --- REPOZYTORIUM ---
 # Zmień na swoje konto, jeśli wypuszczasz pod inną nazwą użytkownika.

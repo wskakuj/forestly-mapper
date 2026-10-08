@@ -31,9 +31,9 @@ import re
 WYSOKOSC_MM = 2.5      # wysokość pisma warstwy 5310 wg biblioteki .lay
 SKALA = 5000           # skala mapy (1:5000)
 SZER_ZNAKU = 0.83      # zmierzone na DXF z GEO-MAP (czcionka Simplex.SHX, width 0.75)
-ODSTEP = 1.15          # mnożnik odstępu między opisami (>1 = trochę luzu)
+ODSTEP = 1.35          # zmierzone na DXF: napis jest wyższy niż zakładano (1.29 na linię)
 KROK = 1.0             # krok siatki wyszukiwania (w wysokościach opisu)
-WERSJA_ALGORYTMU = "algorytm v18 (07.10.2026) — realne rozmiary napisow + strona wysiegnika"
+WERSJA_ALGORYTMU = "algorytm v20 (07.10.2026) — ORIENTACJA napisow wzdluz osi Y (jak GEO-MAP)"
 NA_STYK_TOL = 0.0      # „na styk”: o ile metrów opis może wystawać z wydzielenia
 GAP_OPIS = 5.0         # minimalny odstęp między dwoma opisami (m)
 
@@ -332,7 +332,10 @@ def rozmiar_opisu(tekst, wysokosc_mm=WYSOKOSC_MM, skala=SKALA, obrot=0.0):
     if abs(obrot) > 1e-9:
         c, si = abs(math.cos(obrot)), abs(math.sin(obrot))
         szer, wys = szer * c + wys * si, szer * si + wys * c
-    return (szer, wys)
+    # ORIENTACJA (ustalona na DXF z GEO-MAP): napis biegnie wzdłuż osi Y mapy,
+    # a jego wysokość wzdłuż osi X. Dlatego zwracamy (wysokość, szerokość) —
+    # inaczej program liczył prostokąty obrócone o 90° i nie widział nakładek.
+    return (wys, szer)
 
 
 MNOZNIK_LITERY = 1.2   # GEO-MAP rysuje litery 3.0 mm, opisy 2.5 mm
@@ -1330,16 +1333,17 @@ def policz_kolizje(mapa, lines=None, wysokosc_mm=WYSOKOSC_MM, skala=SKALA,
         objs = wszystkie_poligony(mapa)
     h = wysokosc_mm * skala / 1000.0
 
-    def _roz(t):
+    def _roz(t, lit=False):
         w = _wiersze(t)
         if not w:
             return (0.0, 0.0)
-        a = max(len(x) for x in w) * h * SZER_ZNAKU
-        b = len(w) * h * ODSTEP
+        _h = h * (MNOZNIK_LITERY if lit else 1.0)   # litery są większe
+        a = max(len(x) for x in w) * _h * SZER_ZNAKU
+        b = len(w) * _h * ODSTEP
         if abs(obrot) > 1e-9:
             c, si = abs(math.cos(obrot)), abs(math.sin(obrot))
             a, b = a * c + b * si, a * si + b * c
-        return (a, b)
+        return (b, a)   # ORIENTACJA: szerokość wzdłuż osi Y (jak GEO-MAP)
 
     opisy, litery = [], []
     wewn = wys = 0
@@ -1363,7 +1367,7 @@ def policz_kolizje(mapa, lines=None, wysokosc_mm=WYSOKOSC_MM, skala=SKALA,
                     except ValueError:
                         pass
         if a1 and 2 in off:
-            r = _roz(a1)
+            r = _roz(a1, lit=True)
             if r[0] > 0:
                 ox, oy = off[2]
                 litery.append((o.get("start"), _prost((b[0] + ox, b[1] + oy), r)))
