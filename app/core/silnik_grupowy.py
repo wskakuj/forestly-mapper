@@ -236,18 +236,51 @@ def _pozycje_zewnetrzne(e, granice, poligony, margines,
 
 
 def _cele(poly, n=7):
+    """Docelowe punkty wysięgnika wewnątrz prawdziwych pierścieni.
+
+    W trybie rozszerzonym dodaj lokalne siatki i próbki przy
+    krawędziach każdej części wielokonturowego wydzielenia.
+    Sama globalna siatka bbox nie wystarcza dla wąskich poligonów.
+    """
     x0, y0, x1, y1 = bbox(poly)
     centers = [srodek((x0, y0, x1, y1))]
     for i in range(n):
         for j in range(n):
             centers.append((x0 + (i + .5) * (x1 - x0) / n,
                             y0 + (j + .5) * (y1 - y0) / n))
+    rings = geo.kontury_poligonu(poly)
+    if len(rings) > 1 and n >= 9:
+        for ring in rings:
+            if len(ring) < 3:
+                continue
+            rx0, ry0, rx1, ry1 = bbox(ring)
+            center = srodek((rx0, ry0, rx1, ry1))
+            for i in range(5):
+                for j in range(5):
+                    centers.append((
+                        rx0 + (i + .5) * (rx1 - rx0) / 5,
+                        ry0 + (j + .5) * (ry1 - ry0) / 5))
+            # Punkty tuż za obwodem pomagają wybrać cel widoczny
+            # z zewnątrz, także w bardzo wąskim konturze. Kierunek
+            # ku środkowi to tylko propozycja, filtr poniżej
+            # odrzuci wszystko poza wielopierścieniowym obszarem.
+            for a, b in zip(ring,ring[1:] + ring[:1]):
+                if a == b:
+                    continue
+                for t in (.25,.5,.75):
+                    p=(a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1]))
+                    for fraction in (.08,.24):
+                        centers.append((
+                            p[0]+fraction*(center[0]-p[0]),
+                            p[1]+fraction*(center[1]-p[1])))
     seen = set()
     for c in centers:
-        if c in seen:
+        key = (round(c[0], 4), round(c[1], 4))
+        if key in seen:
             continue
-        seen.add(c)
-        if geo.prostokat_w_poligonie(powieksz((c[0], c[1], c[0], c[1]), 1.2), poly):
+        seen.add(key)
+        if geo.prostokat_w_poligonie(
+                powieksz((c[0], c[1], c[0], c[1]), 1.2), poly):
             yield c
 
 
