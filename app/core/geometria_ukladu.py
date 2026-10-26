@@ -34,20 +34,33 @@ def punkt_na_odcinku(p, a, b, eps=EPS):
             and min(a[1], b[1]) - eps <= p[1] <= max(a[1], b[1]) + eps)
 
 
+def kontury_poligonu(pts):
+    """Znormalizowane pierścienie jednego wydzielenia.
+
+    Stare pojedyncze listy punktów pozostają obsługiwane bez zmian.
+    """
+    return pts["kontury"] if isinstance(pts, dict) else [pts]
+
+
 def punkt_w_poligonie(p, pts, *, granica=True, eps=EPS):
-    """Promień poziomy; na granicy zwracaj granica (domyślnie True)."""
-    if len(pts) < 3:
-        return False
+    """Parzystość wnętrza wielu pierścieni, z oddzielną obsługą granicy.
+
+    Rozłączne części są unią; pierścień wewnątrz innego tworzy dziurę.
+    Żadne dwa kontury nie są sztucznie łączone.
+    """
     x, y = p
     w_srodku = False
-    for i, a in enumerate(pts):
-        b = pts[(i + 1) % len(pts)]
-        if punkt_na_odcinku(p, a, b, eps):
-            return granica
-        if (a[1] > y) != (b[1] > y):
-            przeciecie_x = a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
-            if x < przeciecie_x:
-                w_srodku = not w_srodku
+    for ring in kontury_poligonu(pts):
+        if len(ring) < 3:
+            continue
+        for i, a in enumerate(ring):
+            b = ring[(i + 1) % len(ring)]
+            if punkt_na_odcinku(p, a, b, eps):
+                return granica
+            if (a[1] > y) != (b[1] > y):
+                przeciecie_x = a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
+                if x < przeciecie_x:
+                    w_srodku = not w_srodku
     return w_srodku
 
 
@@ -92,19 +105,28 @@ def prostokat_w_poligonie(r, pts, eps=EPS):
     z otwartym wnętrzem prostokąta.
     """
     x0, y0, x1, y1 = r
-    if len(pts) < 3 or x0 >= x1 or y0 >= y1:
+    rings = kontury_poligonu(pts)
+    if x0 >= x1 or y0 >= y1 or not rings:
         return False
-    pole2 = sum(a[0] * b[1] - b[0] * a[1]
-                for a, b in zip(pts, pts[1:] + pts[:1]))
-    if abs(pole2) <= eps:
+    # Nie sumuj pól o przeciwnej orientacji: niezależne pierścienie
+    # mogą mieć przeciwne kierunki obiegu, a nadal tworzyć poprawną unie.
+    valid = any(
+        len(ring) >= 3 and
+        abs(sum(a[0] * b[1] - b[0] * a[1]
+                for a, b in zip(ring, ring[1:] + ring[:1]))) > eps
+        for ring in rings)
+    if not valid:
         return False
     rogi = ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
     if not all(punkt_w_poligonie(p, pts, eps=eps) for p in rogi):
         return False
-    for i, a in enumerate(pts):
-        b = pts[(i + 1) % len(pts)]
-        if odcinek_przecina_prostokat(a, b, r, wnetrze=True, eps=eps):
-            return False
+    # Każdy prawdziwy pierścień (również dziura w poligonie) blokuje
+    # napis, jeśli jego krawędź przechodzi przez wnętrze prostokąta.
+    for ring in rings:
+        for i, a in enumerate(ring):
+            b = ring[(i + 1) % len(ring)]
+            if odcinek_przecina_prostokat(a, b, r, wnetrze=True, eps=eps):
+                return False
     return True
 
 
