@@ -28,8 +28,12 @@ def prost(c, rozmiar):
 
 
 def bbox(pts):
-    return (min(p[0] for p in pts), min(p[1] for p in pts),
-            max(p[0] for p in pts), max(p[1] for p in pts))
+    # Wydzielenie może mieć wiele rozłącznych pierścieni i dziury.
+    rings = geo.kontury_poligonu(pts)
+    return (min(p[0] for ring in rings for p in ring),
+            min(p[1] for ring in rings for p in ring),
+            max(p[0] for ring in rings for p in ring),
+            max(p[1] for ring in rings for p in ring))
 
 
 def odleglosc_boxow(a, b):
@@ -47,25 +51,26 @@ def krawedzie(poligony):
     """
     seen = set()
     for item in poligony:
-        if isinstance(item, dict):
-            pts = item["punkty"]
-            zamkniety = item["zamkniety"]
+        if isinstance(item, dict) and "kontury" in item:
+            fragments = [(ring, True) for ring in item["kontury"]]
+        elif isinstance(item, dict):
+            fragments = [(item["punkty"], item["zamkniety"])]
         else:
-            pts = item
-            zamkniety = True  # zgodność dla istniejących wywołań polygonowych
-        if len(pts) < 2:
-            continue
-        edges = list(zip(pts, pts[1:]))
-        if zamkniety and pts[-1] != pts[0]:
-            edges.append((pts[-1], pts[0]))
-        for a, b in edges:
-            if a == b:
+            fragments = [(item, True)]
+        for pts, zamkniety in fragments:
+            if len(pts) < 2:
                 continue
-            key = tuple(sorted((tuple(a), tuple(b))))
-            if key not in seen:
-                seen.add(key)
-                yield (a, b, (min(a[0], b[0]), min(a[1], b[1]),
-                              max(a[0], b[0]), max(a[1], b[1])))
+            edges = list(zip(pts, pts[1:]))
+            if zamkniety and pts[-1] != pts[0]:
+                edges.append((pts[-1], pts[0]))
+            for a, b in edges:
+                if a == b:
+                    continue
+                key = tuple(sorted((tuple(a), tuple(b))))
+                if key not in seen:
+                    seen.add(key)
+                    yield (a, b, (min(a[0], b[0]), min(a[1], b[1]),
+                                  max(a[0], b[0]), max(a[1], b[1])))
 
 
 class Granice:
@@ -120,9 +125,11 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
         for j in range(n):
             centers.append((bounds[0] + (i + .5) * (bounds[2] - bounds[0]) / n,
                             bounds[1] + (j + .5) * (bounds[3] - bounds[1]) / n))
-    for a, b, c in zip(poly, poly[1:] + poly[:1], poly[2:] + poly[:2]):
-        centers.append(((a[0] + b[0] + c[0]) / 3,
-                        (a[1] + b[1] + c[1]) / 3))
+    for ring in geo.kontury_poligonu(poly):
+        for a, b, c in zip(
+                ring, ring[1:] + ring[:1], ring[2:] + ring[:2]):
+            centers.append(((a[0] + b[0] + c[0]) / 3,
+                            (a[1] + b[1] + c[1]) / 3))
     centers.sort(key=lambda c: math.dist(c, srodek(box)))
     found = set()
     for c in centers:
