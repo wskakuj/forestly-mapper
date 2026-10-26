@@ -494,3 +494,49 @@ wyniku na SVG i następnie w GEO-MAP.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_adaptacja_v6.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_adaptacja_v6.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_adaptacja_v6.svg"
 \`\`\`
+
+
+## Etap 7 — estetyka pary L2/L3 i czytelność podglądu
+
+W rzeczywistym teście \`byslaw_4abc_adaptacja_v6.json\` uzyskano
+\`wspolna_proba.sukces=true\` już przy 24 wariantach na wydzielenie.
+Przesunięto 6 napisów: \`4a\`, \`4b\` i \`4c\`; pozostałe zgłoszenia na
+całej mapie spadły z 280 do 265. W SVG dla wybranych wydzieleń
+brak wykrytych kolizji **według dotychczasowego walidatora**.
+
+Mimo tego \`4a\` wygląda zbyt rozciągnięte: litera poza poligonem
+poniżej innych obiektów, opis znacznie bardziej na lewo. Rozdzielamy
+dwie warstwy jakości:
+- **warunki twarde**: pełen prostokąt w poligonie bez wysięgnika,
+  albo wymagany wysięgnik; nieprzecinanie się napisów; wspólny
+  cel dla dwóch zewnętrznych napisów; cel opisu na literze, jeżeli
+  ta jest wewnątrz; niezmieniona bezpieczna obsługa konturów;
+- **ranking miękki**: istniejące kary za przesunięcie i długość
+  wysięgnika oraz nowa kara za odległość pomiędzy prostokątami
+  własnej litery L2 i opisu L3. Kara jest unormowana średnią
+  wysokością prostokątów, największa gdy oba napisy są na zewnątrz,
+  mniejsza gdy żaden nie wymaga wysięgnika. Dla pojedynczej etykiety
+  koszt pozostaje bez zmian.
+
+Zmiana nie obiecuje konkretnego krótszego rozwiązania: może istnieć
+tylko jedna kompletna bezkolizyjna konfiguracja w ograniczonej
+puli kandydatów. Bez dodatkowej weryfikacji rzeczywistego wyniku V7
+nie należy twierdzić, że \`4a\` zostało estetycznie poprawione.
+
+**SVG:** zawartość A2 zapisana jako \`tekst|pole\` jest pokazywana
+w osobnych wierszach \`<tspan>\`, a pełny oryginalny tekst pozostaje
+w \`data-full-text\` dla diagnostyki. Wysokość fontu dostosowana
+do liczby wierszy; SVG nadal używa prostokątów przybliżonych, a nie
+rzeczywistych fontów GEO-MAP.
+
+**Granice walidacji:** raport \`pelna_walidacja_topologii=false\`
+nadal obowiązuje, a podgląd \`Bez wykrytych kolizji\` dotyczy
+modelowanych etykiet/wysięgników. Nie wolno z tego wyciągać wniosku,
+że linie nie przecinają dodatkowych granic, dróg czy obiektów
+kartograficznych, których przecięcia nie są jeszcze w pełni
+walidowane. Brak automatycznego eksportu oryginału MAP.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_estetyka_v7.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_estetyka_v7.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_estetyka_v7.svg"
+\`\`\`
