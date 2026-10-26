@@ -16,6 +16,31 @@ from app.core import silnik_grupowy as engine
 from app.core import uklad_opisow as uk
 
 
+def _wykryj_wiele_konturow(poligony, lines):
+    """Zgłoś podejrzane obiekty 5310 z kilkoma konturami P 0.
+
+    Aktualny parser uklad_opisow.wszystkie_poligony splaszcza te kontury
+    do jednej listy punktow. Nie wolno traktowac jego wyniku jako
+    sprawdzonej topologii obiektow wieloczescowych.
+    """
+    out = []
+    for obj in poligony:
+        if not lines[obj["start"]].startswith("*5310 "):
+            continue
+        liczba = sum(
+            len(line.split()) >= 2 and line.split()[0:2] == ["P", "0"]
+            for line in obj["linie"])
+        if liczba <= 1:
+            continue
+        def atr(key):
+            prefix = ":" + key + "["
+            return next((line[len(prefix):-1] for line in obj["linie"]
+                         if line.startswith(prefix) and line.endswith("]")), "")
+        out.append({"id": atr("ID"), "litera": atr("A1"),
+                    "liczba_sekcji_p0": liczba})
+    return out
+
+
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
               limit_grup=8, postep=None, etykiety=()):
@@ -24,7 +49,9 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     mapa = onm.wczytaj_mape(path)
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
     przed, ostrzezenia = dm.elementy_z_mapy(mapa, scale, wysokosc_mm)
-    wszystkie = [o["punkty"] for o in uk.wszystkie_poligony(mapa)]
+    obiekty = uk.wszystkie_poligony(mapa)
+    wszystkie = [o["punkty"] for o in obiekty]
+    wielokonturowe = _wykryj_wiele_konturow(obiekty, mapa["lines"])
     nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
              if e["rodzaj"] == "litera"}
     szukane = {x.strip().casefold() for x in etykiety if x.strip()}
@@ -72,6 +99,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "liczba_wydzielen": len({e["wydzielenie"] for e in przed}),
         "wybrane_etykiety": sorted(szukane),
         "wybrane_uuid": sorted(znalezione),
+        "wydzielenia_wielokonturowe": wielokonturowe,
+        "pelna_walidacja_topologii": not wielokonturowe,
         "przed": dict(Counter(e["typ"] for e in wczesniejsze)),
         "po": dict(Counter(e["typ"] for e in pozniejsze)),
         "zmienione_napisy": len(zmiany),
@@ -139,6 +168,11 @@ def main(argv=None):
     print("Problemy po:   ", result["po"])
     print("Zmienione etykiety:", result["zmienione_napisy"])
     print("Nierozwiazane problemy:", result["liczba_nierozwiazanych"])
+    if result["wydzielenia_wielokonturowe"]:
+        print("UWAGA: wykryto %d wydzielen wielokonturowych; obecny parser"
+              " nie waliduje ich topologii:" % len(result["wydzielenia_wielokonturowe"]))
+        print(", ".join(e["litera"] or e["id"]
+                        for e in result["wydzielenia_wielokonturowe"][:20]))
     if result["analiza_czesciowa"]:
         print("UWAGA: to CZESCIOWA symulacja, limit grup zostal osiagniety.")
     print("UWAGA:", result["uwaga"])
