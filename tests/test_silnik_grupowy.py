@@ -251,6 +251,63 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(any(0 < x < 100 and y > 100
                             for x,y in center))
 
+    def test_successful_but_stretched_pair_is_refined_after_24(self):
+        """A valid initial solution must not block a prettier 72-plan variant."""
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(300,0),(400,0),(400,100),(300,100)]
+        elements = [
+            item('a:L2','litera',(20,20,35,35),pa),
+            item('a:L3','opis',(20,20,50,70),pa),
+            item('b:L2','litera',(320,20,335,35),pb),
+            item('b:L3','opis',(320,45,350,95),pb),
+        ]
+        def pair(outside_desc):
+            target = (50,50)
+            rl = (10,140,25,160)
+            rd = outside_desc
+            return [
+                dict(elements[0],prostokat=rl,
+                     wysiegnik=engine.lider(rl,target)),
+                dict(elements[1],prostokat=rd,
+                     wysiegnik=engine.lider(rd,target)),
+            ]
+        far = pair((80,170,110,220))
+        compact = pair((35,170,65,220))
+        fixed = [elements[2],elements[3]]
+        def plans(group,*args,**kwargs):
+            if group[0]['wydzielenie'] == 'b':
+                return [fixed]
+            return [compact if kwargs.get('limit',24) > 24 else far]
+        self.assertGreater(engine._maks_odstep_pary(far), .75)
+        self.assertLess(engine._maks_odstep_pary(compact),
+                        engine._maks_odstep_pary(far))
+        with patch.object(engine,'opcje_wydzielenia',side_effect=plans):
+            actual, report = engine.optymalizuj(
+                elements, wszystkie_poligony=[pa,pb],
+                wybrane_wydzielenia={'a','b'},
+                maks_grupa=2, przebiegi=1)
+        info = report['wspolna_proba']
+        self.assertTrue(info['sukces'])
+        self.assertEqual(info['wybrany_limit_planow'],72)
+        self.assertEqual([p['limit_planow_na_wydzielenie']
+                          for p in info['proby']], [24,72])
+        self.assertEqual(next(e for e in actual if e['id']=='a:L3')
+                         ['prostokat'],compact[1]['prostokat'])
+
+    def test_refinement_keeps_best_when_extended_pool_is_worse(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        e1=item('a:L2','litera',(20,20,35,35),poly)
+        e2=item('a:L3','opis',(20,20,50,70),poly)
+        a=[dict(e1,prostokat=(15,140,30,160),
+                wysiegnik=engine.lider((15,140,30,160),(50,50))),
+           dict(e2,prostokat=(50,170,80,220),
+                wysiegnik=engine.lider((50,170,80,220),(50,50)))]
+        b=[dict(a[0]),dict(a[1],prostokat=(300,170,330,220),
+                             wysiegnik=engine.lider((300,170,330,220),(50,50)))]
+        original={e['id']:e for e in (e1,e2)}
+        self.assertLess(engine._koszt(a,original),
+                        engine._koszt(b,original))
+
     def test_targeted_joint_attempt_expands_pool_after_24_fail(self):
         pa = [(0,0),(100,0),(100,100),(0,100)]
         pb = [(200,0),(300,0),(300,100),(200,100)]
