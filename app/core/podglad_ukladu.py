@@ -12,7 +12,6 @@ from pathlib import Path
 
 from app.core import diagnostyka_map as dm
 from app.core import opisy_na_mape as onm
-from app.core import uklad_opisow as uk
 
 
 def _bbox(points):
@@ -49,6 +48,25 @@ def _kontury(lines):
     if len(points) >= 2:
         contours.append((points, False))
     return contours
+
+
+def _obiekty_liniowe(mapa):
+    """Wszystkie obiekty z co najmniej dwoma punktami P.
+
+    Parser poligonów odrzuca legalne linie dwupunktowe. W SVG musimy
+    narysować również je, aby podgląd nie ukrywał przeszkód.
+    """
+    lines = mapa["lines"]
+    for index, line in enumerate(lines):
+        if not line.startswith("*"):
+            continue
+        end = index + 1
+        while end < len(lines) and not lines[end].startswith("*"):
+            end += 1
+        blok = lines[index + 1:end]
+        pts = [p for pts, _ in _kontury(blok) for p in pts]
+        if len(pts) >= 2:
+            yield {"start": index, "punkty": pts, "linie": blok}
 
 
 def _apply_changes(elements, changes):
@@ -110,7 +128,7 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
     pad = max(kontekst, (x1 - x0) * .12, (y1 - y0) * .12)
     world = (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
 
-    obiekty = uk.wszystkie_poligony(mapa)
+    obiekty = list(_obiekty_liniowe(mapa))
     visible = [o for o in obiekty if _intersects(_bbox(o["punkty"]), world)]
     skipped = max(0, len(visible) - max_obiektow)
     visible = visible[:max_obiektow]
