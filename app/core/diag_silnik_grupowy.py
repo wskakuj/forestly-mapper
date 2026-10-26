@@ -104,6 +104,76 @@ def _statystyki_kandydatow(elementy, poligony, wydzielenia):
     return wynik
 
 
+
+def _przeciecia_wysiegnikow_z_obiektami(elementy, obiekty, lines,
+                                       wybrane=None):
+    """Ostrzeżenia o przecięciach odcinków z geometrią GEO-MAP.
+
+    Ten sam fragment może istnieć w kilku warstwach (np. 5216,
+    5214 i 4220); raport grupuje współliniowe odcinki według punktu
+    przecięcia. Przejście przez własną granicę jest osobno oznaczone.
+    Nie narzucamy automatycznie zakazu przekraczania wszystkich warstw:
+    dla wydzielenia wysięgnik musi przeciąć jego obwód.
+    """
+    edges = []
+    for obj in obiekty:
+        header = lines[obj["start"]].split()
+        typ = header[0] if header else "?"
+        owner = next((line[4:-1] for line in obj["linie"]
+                      if line.startswith(":ID[") and line.endswith("]")),
+                     None)
+        for frag in km.fragmenty_z_linii(obj["linie"]):
+            for a, b, box in engine.krawedzie([frag]):
+                edges.append((a, b, box, typ, owner))
+    out = []
+    for e in elementy:
+        w = e.get("wysiegnik")
+        if w is None or (wybrane is not None and
+                         e["wydzielenie"] not in wybrane):
+            continue
+        a, b = w
+        area = (min(a[0], b[0]), min(a[1], b[1]),
+                max(a[0], b[0]), max(a[1], b[1]))
+        grouped = {}
+        overlaps = []
+        for c, d, box, typ, owner in edges:
+            if (box[0] > area[2] + geo.EPS or
+                    box[2] < area[0] - geo.EPS or
+                    box[1] > area[3] + geo.EPS or
+                    box[3] < area[1] - geo.EPS):
+                continue
+            kind, point = geo.przeciecie_odcinkow(a, b, c, d)
+            if kind == "brak":
+                continue
+            if kind == "nakladanie":
+                overlaps.append({"typ": typ, "id_obiektu": owner})
+                continue
+            key = (round(point[0], 2), round(point[1], 2))
+            group = grouped.setdefault(key, {"punkt":list(key),
+                                                "typy":set(),
+                                                "wlasna_granica":False})
+            group["typy"].add(typ)
+            if owner == e["wydzielenie"] and typ == "*5310":
+                group["wlasna_granica"] = True
+        points = sorted(grouped.values(),key=lambda x:tuple(x["punkt"]))
+        independent = [p for p in points if not p["wlasna_granica"]]
+        out.append({
+            "id_napisu": e["id"],
+            "etykieta": e.get("tekst", ""),
+            "liczba_punktow_przeciec": len(points),
+            "liczba_dodatkowych_przeciec": len(independent),
+            "liczba_nakladajacych_sie_odcinkow": len(overlaps),
+            "punkty": [
+                {"punkt":p["punkt"],
+                 "typy_obiektow":sorted(p["typy"]),
+                 "wlasna_granica":p["wlasna_granica"]}
+                for p in points],
+            "nakladanie": overlaps[:5],
+        })
+    return out
+
+
+
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
               limit_grup=8, postep=None, etykiety=(),
@@ -165,6 +235,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         })
     wczesniejsze = geo.waliduj_uklad(przed)
     pozniejsze = geo.waliduj_uklad(po)
+    przeciecia = _przeciecia_wysiegnikow_z_obiektami(
+        po, obiekty, mapa["lines"], znalezione if szukane else None)
     return {
         "plik_wejsciowy": str(path),
         "skala": scale, "wysokosc_mm": wysokosc_mm,
@@ -187,6 +259,9 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "zmienione_napisy": len(zmiany),
         "liczba_nierozwiazanych": len(pozniejsze),
         "przyklady_problemow": pozniejsze[:150],
+        "przeciecia_wysiegnikow_obiekty_mapy": przeciecia,
+        "liczba_dodatkowych_przeciec_wysiegnikow": sum(
+            item["liczba_dodatkowych_przeciec"] for item in przeciecia),
         "zmiany": zmiany,
         "raport_silnika": raport,
         "analiza_czesciowa": raport.get("analiza_czesciowa", False),
