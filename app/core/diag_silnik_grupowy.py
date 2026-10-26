@@ -12,6 +12,7 @@ from pathlib import Path
 from app.core import diagnostyka_map as dm
 from app.core import kontury_map as km
 from app.core import przeciecia_map as pm
+from app.core import autouklad_calej_mapy as auto
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
 from app.core import silnik_grupowy as engine
@@ -129,8 +130,13 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
               limit_grup=8, postep=None, etykiety=(),
               sprawdz_warianty=False, kara_przeciecia=0.0,
-              kara_wielokrotnej_granicy=0.0):
+              kara_wielokrotnej_granicy=0.0, cala_mapa=False,
+              maks_trudnych=24, rundy_dodatkowe=2):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
+    if cala_mapa and etykiety:
+        raise ValueError('--cala-mapa nie moze byc laczona z --etykiety')
+    if maks_trudnych < 0 or rundy_dodatkowe < 0:
+        raise ValueError('Limity automatycznego dopracowania musza byc nieujemne')
     if kara_przeciecia < 0:
         raise ValueError('--kara-przeciecia nie moze byc ujemna')
     if kara_wielokrotnej_granicy < 0:
@@ -172,13 +178,21 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     if postep:
         pokaz({"etap": "odczyt", "napisy": len(przed),
                "wydzielenia": len({e["wydzielenie"] for e in przed})})
-    po, raport = engine.optymalizuj(
-        przed, wszystkie_poligony=wszystkie,
-        szerokosc_wiazki=szerokosc_wiazki,
-        maks_grupa=maks_grupa, przebiegi=przebiegi,
-        limit_grup=limit_grup, postep=pokaz,
-        wybrane_wydzielenia=znalezione if szukane else None,
-        ocena_dodatkowa=dodatkowy_koszt)
+    if cala_mapa:
+        po, raport = auto.uloz_cala_mape(
+            przed, wszystkie, nazwy=nazwy,
+            szerokosc_wiazki=szerokosc_wiazki,
+            maks_grupa=maks_grupa, przebiegi=przebiegi,
+            maks_trudnych=maks_trudnych, rundy_dodatkowe=rundy_dodatkowe,
+            postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
+    else:
+        po, raport = engine.optymalizuj(
+            przed, wszystkie_poligony=wszystkie,
+            szerokosc_wiazki=szerokosc_wiazki,
+            maks_grupa=maks_grupa, przebiegi=przebiegi,
+            limit_grup=limit_grup, postep=pokaz,
+            wybrane_wydzielenia=znalezione if szukane else None,
+            ocena_dodatkowa=dodatkowy_koszt)
     statystyki_wariantow = (
         _statystyki_kandydatow(przed, wszystkie, znalezione)
         if sprawdz_warianty and znalezione else [])
@@ -206,6 +220,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "liczba_fragmentow_granic": len(wszystkie),
         "liczba_wydzielen": len({e["wydzielenie"] for e in przed}),
         "wybrane_etykiety": sorted(szukane),
+        "tryb_automatyczny_calej_mapy": bool(cala_mapa),
+        "skutecznosc_calej_mapy": raport.get("skutecznosc"),
         "wybrane_uuid": sorted(znalezione),
         "diagnostyka_wariantow": statystyki_wariantow,
         "wydzielenia_wielokonturowe": wielokonturowe,
@@ -237,8 +253,10 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "raport_silnika": raport,
         "analiza_czesciowa": raport.get("analiza_czesciowa", False),
         "ostrzezenia_parsowania": ostrzezenia,
-        "uwaga": ("Tylko symulacja w pamieci. MAP nie jest zapisywany. "
-                  "Obrysy fontu sa szacowane; potrzebna walidacja GEO-MAP."),
+        "uwaga": ("Automatyczny skan wszystkich wydzielen. " if cala_mapa
+                  else "Czesciowa diagnostyka wskazanych skupisk. ")
+                 + ("Tylko symulacja w pamieci, MAP nie jest zapisywany. "
+                    "Obrysy fontu sa szacowane; potrzebna walidacja GEO-MAP."),
     }
 
 
@@ -252,6 +270,12 @@ def main(argv=None):
     p.add_argument("--przebiegi", type=int, default=1)
     p.add_argument("--limit-grup", type=int, default=8,
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
+    p.add_argument('--cala-mapa',action='store_true',
+                   help='Optymalizuj WSZYSTKIE problematyczne wydzielenia bez limitu 8 grup, potem automatycznie dopracuj najtrudniejsze')
+    p.add_argument('--maks-trudnych',type=int,default=24,
+                   help='Ile nierozwiazanych grup sprobowac dodatkowo (domyslnie 24)')
+    p.add_argument('--rundy-dodatkowe',type=int,default=2,
+                   help='Liczba dodatkowych rund dla trudnych grup (domyslnie 2)')
     p.add_argument("--etykiety", nargs="+", default=(),
                    help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
     p.add_argument('--kara-przeciecia', type=float, default=0.0,
@@ -275,6 +299,10 @@ def main(argv=None):
         p.error("--limit-grup nie moze byc ujemny")
     if args.kara_przeciecia < 0:
         p.error('--kara-przeciecia nie moze byc ujemna')
+    if args.maks_trudnych < 0 or args.rundy_dodatkowe < 0:
+        p.error('--maks-trudnych i --rundy-dodatkowe nie moga byc ujemne')
+    if args.cala_mapa and args.etykiety:
+        p.error('--cala-mapa nie moze byc laczona z --etykiety')
     if args.kara_wielokrotnej_granicy < 0:
         p.error('--kara-wielokrotnej-granicy nie moze byc ujemna')
     if args.sprawdz_warianty and not args.etykiety:
@@ -285,6 +313,10 @@ def main(argv=None):
             print("Wczytano:", event["napisy"], "napisow;",
                   event["wydzielenia"], "wydzielen; rozpoczynam analize...",
                   flush=True)
+        elif event.get("etap") == "dopracowanie":
+            print("Dopracowanie runda %d: grupa %d; %s (%s)" % (
+                event["runda"], event["rozpatrzone_lacznie"],
+                event.get("nazwa","?"), event["wydzielenie"]),flush=True)
         else:
             print("Grupa %d/%d, przebieg %d; wydzielenie %s (%s)" % (
                 event["indeks"], event["liczba_grup"],
@@ -300,7 +332,10 @@ def main(argv=None):
             postep=postep, etykiety=args.etykiety,
             sprawdz_warianty=args.sprawdz_warianty,
             kara_przeciecia=args.kara_przeciecia,
-            kara_wielokrotnej_granicy=args.kara_wielokrotnej_granicy)
+            kara_wielokrotnej_granicy=args.kara_wielokrotnej_granicy,
+            cala_mapa=args.cala_mapa,
+            maks_trudnych=args.maks_trudnych,
+            rundy_dodatkowe=args.rundy_dodatkowe)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
@@ -314,6 +349,18 @@ def main(argv=None):
             info["uuid"], info["kandydaci"], info["liczba_planow_w_limicie"],
             info["plany_bez_kolizji_z_innymi_etykietami"]))
     print("Nierozwiazane problemy:", result["liczba_nierozwiazanych"])
+    if result["skutecznosc_calej_mapy"] is not None:
+        stats = result["skutecznosc_calej_mapy"]
+        print("NAPISY BEZ PROBLEMOW: %d/%d (przed: %d)" % (
+            stats["napisy_bez_problemow_po"],stats["napisy_razem"],
+            stats["napisy_bez_problemow_przed"]))
+        print("WYDZIELENIA BEZ PROBLEMOW: %d/%d (przed: %d)" % (
+            stats["wydzielenia_bez_problemow_po"],
+            stats["wydzielenia_razem"],
+            stats["wydzielenia_bez_problemow_przed"]))
+        print("Samodzielnie naprawione napisy: %d; wymagajace kontroli: %d" % (
+            stats["napisy_naprawione"],
+            stats["napisy_razem"]-stats["napisy_bez_problemow_po"]))
     if result["wydzielenia_wielokonturowe"]:
         print("UWAGA: wykryto %d obiektow z wieloma P0;"
               " liczba rzeczywistych konturow jest teraz rozpoznawana."
