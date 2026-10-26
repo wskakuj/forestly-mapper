@@ -436,52 +436,65 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                        "indeks": index, "liczba_grup": len(todo),
                        "wydzielenie": key,
                        "rozpatrzone_lacznie": rozpatrzone})
-            selected = _sasiedztwo(by_group, key, max(1, maks_grupa))
-            selected = [k for k in selected if warianty(k)]
-            if key not in selected:
+            # Najpierw napraw samo wydzielenie. Dopiero gdy zderza sie
+            # z nieprzesuwalnym sasiadem, dolacz do rozwiazywania kolejny
+            # najblizszy poligon. Dawniej pojedynczy niemozliwy sasiad
+            # uniewaznial nawet poprawne samodzielne rozwiazanie celu.
+            neighbors = _sasiedztwo(by_group, key, max(1, maks_grupa))[1:]
+            if not warianty(key):
                 continue
-            fixed = [e for e in obecne.values() if e["wydzielenie"] not in selected]
-            # Ograniczona wiązka: zamiast greedy etykieta po etykiecie,
-            # wybieramy wspólne warianty całych wydzieleń.
-            beam = [(0.0, [])]
-            # Szybki test obwiedni pozwala ominąć setki odległych obiektów
-            # bez rezygnacji ze ścisłego walidatora kolizji.
-            fixed_bounds = [(f, _obwiednia_elementu(f, odstep))
-                            for f in fixed]
-            for k in sorted(selected, key=lambda k: (len(warianty(k)), str(k))):
-                next_beam = []
-                approved = []
-                for plan in warianty(k):
-                    area = _obwiednia_planu(plan, odstep)
-                    if any(_obwiednie_nachodza(area, b)
-                           and _kolizja_miedzy(plan, [f], odstep)
-                           for f, b in fixed_bounds):
-                        continue
-                    approved.append((plan, _koszt(plan, old)))
-                for cost, placed in beam:
-                    for plan, score in approved:
-                        if _kolizja_miedzy(plan, placed, odstep):
-                            continue
-                        next_beam.append((cost + score, placed + plan))
-                beam = sorted(next_beam, key=lambda x: x[0])[:szerokosc_wiazki]
-                if not beam:
+            repaired = False
+            for liczba_sasiadow in range(len(neighbors) + 1):
+                selected = [key] + neighbors[:liczba_sasiadow]
+                if any(not warianty(k) for k in selected):
+                    continue
+                fixed = [e for e in obecne.values()
+                         if e["wydzielenie"] not in selected]
+                current = [e for e in obecne.values()
+                           if e["wydzielenie"] in selected]
+                # Nie ruszaj w pelni poprawnego ukladu: moze juz zostal
+                # naprawiony przez poprzednia operacje w tym przebiegu.
+                if (_poprawne(current, odstep)
+                        and not any(_kolizja_miedzy(current, [f], odstep)
+                                    for f in fixed)):
+                    repaired = True
                     break
-            if not beam:
-                continue
-            _, best = beam[0]
-            current = [e for e in obecne.values() if e["wydzielenie"] in selected]
-            # Nie przesuwaj poprawnego układu bez przyczyny.
-            if _poprawne(current, odstep) and not any(
-                    _kolizja_miedzy(current, [e], odstep) for e in fixed):
-                continue
-            if all(e["prostokat"] == obecne[e["id"]]["prostokat"] and
-                   e.get("wysiegnik") == obecne[e["id"]].get("wysiegnik")
-                   for e in best):
-                continue
-            for e in best:
-                obecne[e["id"]] = e
-            improved += 1
-            wykonane += 1
+                beam = [(0.0, [])]
+                fixed_bounds = [(f, _obwiednia_elementu(f, odstep))
+                                for f in fixed]
+                for k in sorted(selected, key=lambda k:
+                                (len(warianty(k)), str(k))):
+                    next_beam = []
+                    approved = []
+                    for plan in warianty(k):
+                        area = _obwiednia_planu(plan, odstep)
+                        if any(_obwiednie_nachodza(area, b)
+                               and _kolizja_miedzy(plan, [f], odstep)
+                               for f, b in fixed_bounds):
+                            continue
+                        approved.append((plan, _koszt(plan, old)))
+                    for cost, placed in beam:
+                        for plan, score in approved:
+                            if _kolizja_miedzy(plan, placed, odstep):
+                                continue
+                            next_beam.append((cost + score, placed + plan))
+                    beam = sorted(next_beam, key=lambda x: x[0])[:szerokosc_wiazki]
+                    if not beam:
+                        break
+                if not beam:
+                    continue
+                _, best = beam[0]
+                if all(e["prostokat"] == obecne[e["id"]]["prostokat"] and
+                       e.get("wysiegnik") == obecne[e["id"]].get("wysiegnik")
+                       for e in best):
+                    repaired = True
+                    break
+                for e in best:
+                    obecne[e["id"]] = e
+                improved += 1
+                wykonane += 1
+                repaired = True
+                break
         if not improved:
             break
 
