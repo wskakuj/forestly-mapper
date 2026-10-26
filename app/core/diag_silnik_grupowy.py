@@ -67,13 +67,23 @@ def _statystyki_kandydatow(elementy, poligony, wydzielenia):
         plans = engine.opcje_wydzielenia(group, index, poligony)
         strategies = Counter()
         viable = 0
-        other = [e for e in elementy if e["wydzielenie"] != uuid]
-        for plan in plans:
+        # Zidentyfikuj konkretnych właścicieli blokujących napisów,
+        # aby odróżnić brak miejsca od konieczności przesunięcia
+        # sąsiada. Uwzględnia również wysięgniki i przesunięte opisy.
+        by_id = {e["id"]: e for e in elementy}
+        blocked = engine._blokady_planow(plans, by_id, uuid, 2.5)
+        hits = Counter(x for blocker_set, _ in blocked for x in blocker_set)
+        by_uuid = {e["wydzielenie"]: e["tekst"] for e in elementy
+                   if e["rodzaj"] == "litera"}
+        minimal = min((len(blockers) for blockers, _ in blocked), default=None)
+        closest = sorted({tuple(sorted(blockers))
+                          for blockers, _ in blocked
+                          if len(blockers) == minimal})[:5] if minimal is not None else []
+        for plan, (blockers, _) in zip(plans, blocked):
             style = "+".join(sorted(e["rodzaj"] for e in plan
                                     if e.get("wysiegnik")))
             strategies[style or "wszystko_wewnatrz"] += 1
-            if not any(engine._kolizja_miedzy(plan, [f], 2.5)
-                       for f in other):
+            if not blockers:
                 viable += 1
         wynik.append({
             "uuid": uuid, "liczba_etykiet": len(group),
@@ -81,7 +91,16 @@ def _statystyki_kandydatow(elementy, poligony, wydzielenia):
             "liczba_planow_w_limicie": len(plans),
             "strategie_planow": dict(strategies),
             "plany_bez_kolizji_z_innymi_etykietami": viable,
-            "uwaga": "Dane dla pierwotnego rozmieszczenia i 24 planow na wydzielenie."})
+            "minimalna_liczba_blokujacych_grup": minimal,
+            "najczestsze_blokady": [
+                {"uuid": key, "etykieta": by_uuid.get(key, ""),
+                 "blokowanych_planow": count}
+                for key, count in sorted(hits.items(),
+                                         key=lambda pair: (-pair[1], str(pair[0])))[:12]],
+            "przykladowe_minimalne_zestawy_blokad": [
+                [{"uuid": key, "etykieta": by_uuid.get(key, "")}
+                 for key in groups] for groups in closest],
+            "uwaga": "Ograniczone warianty w pierwotnym otoczeniu; nie dowodza optymalnosci."})
     return wynik
 
 
