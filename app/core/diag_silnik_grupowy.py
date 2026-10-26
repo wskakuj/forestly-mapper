@@ -41,9 +41,50 @@ def _wykryj_wiele_konturow(poligony, lines):
     return out
 
 
+def _statystyki_kandydatow(elementy, poligony, wydzielenia):
+    """Oblicz, czy brak rozwiązania wynika z generacji czy z przeszkód.
+
+    Raportuje wszystkie bezpieczne plany z ograniczonego zestawu
+    24 wariantów na grupę, nie pełną przestrzeń możliwych pozycji.
+    """
+    index = engine.Granice(poligony)
+    wynik = []
+    for uuid in sorted(wydzielenia):
+        group = [e for e in elementy if e["wydzielenie"] == uuid]
+        if not group:
+            continue
+        counts = {
+            e["rodzaj"]: {
+                "wewnetrzne": len(list(engine._pozycje_wewnatrz(e, index, 2.5))),
+                "zewnetrzne": len(list(engine._pozycje_zewnetrzne(
+                    e, index, poligony, 2.5)))}
+            for e in group
+        }
+        plans = engine.opcje_wydzielenia(group, index, poligony)
+        strategies = Counter()
+        viable = 0
+        other = [e for e in elementy if e["wydzielenie"] != uuid]
+        for plan in plans:
+            style = "+".join(sorted(e["rodzaj"] for e in plan
+                                    if e.get("wysiegnik")))
+            strategies[style or "wszystko_wewnatrz"] += 1
+            if not any(engine._kolizja_miedzy(plan, [f], 2.5)
+                       for f in other):
+                viable += 1
+        wynik.append({
+            "uuid": uuid, "liczba_etykiet": len(group),
+            "kandydaci": counts,
+            "liczba_planow_w_limicie": len(plans),
+            "strategie_planow": dict(strategies),
+            "plany_bez_kolizji_z_innymi_etykietami": viable,
+            "uwaga": "Dane dla pierwotnego rozmieszczenia i 24 planow na wydzielenie."})
+    return wynik
+
+
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
-              limit_grup=8, postep=None, etykiety=()):
+              limit_grup=8, postep=None, etykiety=(),
+              sprawdz_warianty=False):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     path = Path(sciezka)
     mapa = onm.wczytaj_mape(path)
@@ -78,6 +119,9 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         maks_grupa=maks_grupa, przebiegi=przebiegi,
         limit_grup=limit_grup, postep=pokaz,
         wybrane_wydzielenia=znalezione if szukane else None)
+    statystyki_wariantow = (
+        _statystyki_kandydatow(przed, wszystkie, znalezione)
+        if sprawdz_warianty and znalezione else [])
     orig = {e["id"]: e for e in przed}
     zmiany = []
     for e in po:
@@ -99,6 +143,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "liczba_wydzielen": len({e["wydzielenie"] for e in przed}),
         "wybrane_etykiety": sorted(szukane),
         "wybrane_uuid": sorted(znalezione),
+        "diagnostyka_wariantow": statystyki_wariantow,
         "wydzielenia_wielokonturowe": wielokonturowe,
         "pelna_walidacja_topologii": not wielokonturowe,
         "przed": dict(Counter(e["typ"] for e in wczesniejsze)),
@@ -127,6 +172,8 @@ def main(argv=None):
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
     p.add_argument("--etykiety", nargs="+", default=(),
                    help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
+    p.add_argument("--sprawdz-warianty", action="store_true",
+                   help="Policz odrzucone warianty (wymaga --etykiety)")
     p.add_argument("--json", help="Zapisz raport w osobnym pliku .json")
     args = p.parse_args(argv)
     if args.json:
@@ -140,6 +187,8 @@ def main(argv=None):
             p.error("--%s musi byc dodatnie" % name)
     if args.limit_grup < 0:
         p.error("--limit-grup nie moze byc ujemny")
+    if args.sprawdz_warianty and not args.etykiety:
+        p.error("--sprawdz-warianty wymaga --etykiety")
 
     def postep(event):
         if event.get("etap") == "odczyt":
@@ -158,7 +207,8 @@ def main(argv=None):
             args.mapa, args.skala, args.wysokosc_mm,
             args.wiazka, args.maks_grupa, args.przebiegi,
             limit_grup=None if args.limit_grup == 0 else args.limit_grup,
-            postep=postep, etykiety=args.etykiety)
+            postep=postep, etykiety=args.etykiety,
+            sprawdz_warianty=args.sprawdz_warianty)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
@@ -167,6 +217,10 @@ def main(argv=None):
     print("Problemy przed:", result["przed"])
     print("Problemy po:   ", result["po"])
     print("Zmienione etykiety:", result["zmienione_napisy"])
+    for info in result["diagnostyka_wariantow"]:
+        print("DIAG wariantow %s: kandydaci=%s | plany=%s | bez kolizji z otoczeniem=%s" % (
+            info["uuid"], info["kandydaci"], info["liczba_planow_w_limicie"],
+            info["plany_bez_kolizji_z_innymi_etykietami"]))
     print("Nierozwiazane problemy:", result["liczba_nierozwiazanych"])
     if result["wydzielenia_wielokonturowe"]:
         print("UWAGA: wykryto %d wydzielen wielokonturowych; obecny parser"
