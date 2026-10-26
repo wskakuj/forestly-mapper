@@ -775,7 +775,13 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                     else:
                         report["poprawiono_najlepszy"] = False
                 trial_results.append(report)
-                if selected is not None and _maks_odstep_pary(selected) <= .75:
+                # Gdy użytkownik aktywował karę GIS, nie kończ
+                # na zwartym układzie, który nadal przecina obce linie.
+                # W takim przypadku warto sprawdzić także limit 112.
+                if (selected is not None
+                        and _maks_odstep_pary(selected) <= .75
+                        and (ocena_dodatkowa is None
+                             or ocena_dodatkowa(selected) <= geo.EPS)):
                     break
             wspolna_proba = dict(trial_results[-1])
             wspolna_proba["sukces"] = selected is not None
