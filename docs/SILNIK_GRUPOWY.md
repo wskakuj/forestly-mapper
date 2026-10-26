@@ -95,3 +95,33 @@ Największe przesunięcie napisu około 267 m — dlatego usunięto
 sztuczne ucięcie kosztu przesunięcia po 100 m i zastosowano koszt
 unormowany wysokością napisu. Te wyniki są z poprzedniej implementacji,
 nie stanowią benchmarku nowej funkcji kosztu.
+
+## Celowane przeliczenie skupisk (bez zapisu MAP)
+
+Silnik potrafi ograniczyć **modyfikacje** do wskazanych etykiet A1, np.
+`3h` lub `4a 4b 4c`, ale pozostałe napisy i krawędzie mapy nadal
+traktuje jako przeszkody. Sąsiednie wydzielenia mogą być dodatkowo
+przesuwane tylko jeśli mieszczą się w limicie `--maks-grupa` i są
+niezbędne do wspólnego, bezkolizyjnego rozwiązania.
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --json "byslaw_3h_etap4.json"
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 4 --wiazka 12 --przebiegi 1 --json "byslaw_4abc_etap4.json"
+```
+
+W odróżnieniu od pierwszego raportu nowa funkcja diagnostyczna nazywa
+postęp nazwą A1 i UUID. `wybrane_etykiety`, `wybrane_uuid`,
+`pominiete_przez_wybor` i `analiza_czesciowa` odróżniają częściową
+symulację od kompleksowej. Dla celowanego uruchomienia statystyki
+`po` dotyczą całej mapy, lecz nie oznaczają, że pozostałe grupy
+zostały zoptymalizowane.
+
+Wybór sąsiednich grup jest adaptacyjny: algorytm najpierw sprawdza
+samą docelową grupę, dopiero potem sąsiadów. Przy limitowaniu liczby
+wariantów zachowuje reprezentację rozwiązań: wszystkie napisy w środku,
+litera w środku z opisem na zewnątrz, opis w środku z literą na zewnątrz
+oraz dwa napisy na zewnątrz ze wspólnym celem.
+
+**Ograniczenie:** bez rzeczywistego pliku GEO-MAP i jego wizualnej
+inspekcji nie jest możliwe potwierdzenie, że wydzielenia 3h lub 4a/b/c
+zostały naprawione. Wynik algorytmu jest jedynie symulacją geometrii.
