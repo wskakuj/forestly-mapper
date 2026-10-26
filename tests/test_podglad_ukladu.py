@@ -67,8 +67,8 @@ class PreviewTests(unittest.TestCase):
 
     def test_open_line_is_not_closed_and_contours_remain_separate(self):
         contours = preview._kontury([
-            "P 1 0 0", "P 1 10 0", "P 0 0 0",
-            "P 1 20 0", "P 1 30 0", "P 0 20 0",
+            "P 1 0 0", "P 1 10 0", "P 1 10 10", "P 0 0 0",
+            "P 1 20 0", "P 1 30 0", "P 1 30 10", "P 0 20 0",
             "P 1 40 0", "P 1 50 0",
         ])
         self.assertEqual(len(contours), 3)
