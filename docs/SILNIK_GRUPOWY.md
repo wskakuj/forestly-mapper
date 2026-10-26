@@ -125,3 +125,35 @@ oraz dwa napisy na zewnątrz ze wspólnym celem.
 **Ograniczenie:** bez rzeczywistego pliku GEO-MAP i jego wizualnej
 inspekcji nie jest możliwe potwierdzenie, że wydzielenia 3h lub 4a/b/c
 zostały naprawione. Wynik algorytmu jest jedynie symulacją geometrii.
+
+## Diagnoza rzeczywistego BYSŁAW — odblokowanie 3h
+
+Po analizie oryginalnego pliku GEO-MAP `01_BYSŁAW_z_opisami.MAP`
+wykryto ogólną blokadę generatora: wykluczał wszystkie pozycje
+zewnętrzne, których środek znajdował się **w dowolnym poligonie**.
+Nie wynika to z zasad rozmieszczenia. Pozycja może leżeć w pustym
+wnętrzu innego poligonu, o ile prostokąt nie przecina żadnej granicy
+ani etykiety, a wysięgnik jest prawidłowy.
+
+Na 80 pozycjach proponowanych w każdym wariancie dla `3h`
+szacunkowa próba geometrii mapy wykazała dla litery 54 kolizje z granicą
+i 26 odrzuceń z powodu obcego wnętrza; dla opisu odpowiednio 76 i 4.
+Żaden wariant nie pozostawał. Zmieniono ten filtr na kontrolę
+**własnego poligonu**, zachowując walidację granic i wzajemnych
+przecięć. Samo istnienie kandydatów nadal nie gwarantuje kompletnego
+rozwiązania.
+
+Ponadto w mapie wykryto 11 obiektów `5310` z wieloma konturami
+zapisanymi liniami `P 0` (m.in. `4a` i `4c`). Dotychczasowy parser
+scalał punkty w jeden obrys; jego wynik dla takiego obiektu **nie jest
+wiarygodną topologią**. Diagnostyka raportuje
+`wydzielenia_wielokonturowe` oraz `pelna_walidacja_topologii=false`.
+Do czasu wdrożenia modelu wielokonturowego wyniki takich wydzieleń
+nie powinny być eksportowane automatycznie.
+
+Nowa kontrola tylko do odczytu:
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --json "byslaw_3h_etap4b.json"
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 4 --wiazka 12 --przebiegi 1 --json "byslaw_4abc_etap4b.json"
+```
