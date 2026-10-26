@@ -46,6 +46,19 @@ class ReadOnlyMapTests(unittest.TestCase):
             self.assertEqual(json.loads(dst.read_text(encoding="utf-8"))[
                 "liczba_napisow"], 2)
 
+    def test_resolves_a1_and_reports_targeted_scan(self):
+        with TemporaryDirectory() as root:
+            src = Path(root) / "test.MAP"
+            self.sample(src)
+            original = src.read_bytes()
+            report = diag.diagnozuj(src, skala=4000, etykiety=["A"],
+                                    limit_grup=1)
+            self.assertEqual(report["wybrane_uuid"], ["TEST-UUID"])
+            self.assertEqual(report["wybrane_etykiety"], ["a"])
+            self.assertEqual(original, src.read_bytes())
+            with self.assertRaisesRegex(ValueError, "Nie znaleziono"):
+                diag.diagnozuj(src, skala=4000, etykiety=["3h"])
+
     def test_rejects_map_as_report_target(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
