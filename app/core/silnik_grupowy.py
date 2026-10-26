@@ -346,6 +346,42 @@ def _rozlozone(probki, ile):
     return [probki[i] for i in indexes]
 
 
+def _cele_ocenione(anchors, etykiety_zewnetrzne, ocena_dodatkowa,
+                  limit=9):
+    """Wybierz cele nie tylko według długości, lecz także przeszkód GIS.
+
+    Każdy element etykiety_zewnetrzne to (element, prostokat).
+    Bez opcjonalnej oceny zachowujemy dokładnie dawną kolejność.
+    Z oceną rozważamy także dalsze cele, bo krótsza linia
+    może kilkakrotnie przecinać obrys lub drogę.
+    """
+    ordered = sorted(anchors,key=lambda target: (
+        sum(math.dist(target,srodek(rect))
+            for _,rect in etykiety_zewnetrzne),
+        target))
+    if ocena_dodatkowa is None:
+        return ordered[:limit]
+    # Ograniczenie kosztu: 36 najbliższych + reprezentacja punktów
+    # z dalszych części pierścieni, bez pełnego iloczynu kombinacji.
+    near = max(30,4*limit)
+    pool = ordered[:near]
+    step = max(1,(len(ordered)-near)//24)
+    if len(ordered)>near:
+        pool += ordered[near::step][:24]
+    ranked = []
+    for target in pool:
+        leaders = [_wariant(e,rect,target)
+                   for e,rect in etykiety_zewnetrzne]
+        distance = sum(
+            6.0 * math.dist(*e["wysiegnik"]) /
+            max(e["prostokat"][3]-e["prostokat"][1],geo.EPS)
+            for e in leaders)
+        rank = distance + ocena_dodatkowa(leaders)
+        ranked.append((rank,target))
+    ranked.sort(key=lambda pair:(pair[0],pair[1]))
+    return [point for _,point in ranked[:limit]]
+
+
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                       odstep=2.5, limit=24, ocena_dodatkowa=None):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
@@ -389,7 +425,8 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         for r in inside[e["id"]]:
             add([(e, r, False)])
         for r in outside[e["id"]]:
-            for c in sorted(anchors, key=lambda a: math.dist(a, srodek(r)))[:8]:
+            for c in _cele_ocenione(
+                    anchors,[(e,r)],ocena_dodatkowa,limit=8):
                 add([(e, r, True)], c)
     else:
         a, b = grupa
@@ -405,8 +442,8 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                     if e["rodzaj"] == "litera" and f["rodzaj"] == "opis":
                         add([(e, ri, False), (f, ro, True)])
                     else:
-                        for c in sorted(
-                                anchors, key=lambda p: math.dist(p, srodek(ro)))[:7]:
+                        for c in _cele_ocenione(
+                                anchors,[(f,ro)],ocena_dodatkowa,limit=7):
                             add([(e, ri, False), (f, ro, True)], c)
         lit_a = (_rozlozone(outside[a["id"]], 20) if rozszerzone
                  else outside[a["id"]][:10])
@@ -436,17 +473,17 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                         if (granice.przecina(powieksz(rd, margines))
                                 or geo.prostokat_w_poligonie(rd, desc["poligon"])):
                             continue
-                        for c in sorted(
-                                anchors, key=lambda p: math.dist(p,srodek(rl))
-                                + math.dist(p,srodek(rd)))[:9]:
+                        for c in _cele_ocenione(
+                                anchors,[(letter,rl),(desc,rd)],
+                                ocena_dodatkowa,limit=9):
                             add([(letter, rl, True), (desc, rd, True)], c)
         for ra in lit_a:
             for rb in lit_b:
                 if geo.prostokaty_koliduja(powieksz(ra, odstep / 2),
                                            powieksz(rb, odstep / 2)):
                     continue
-                for c in sorted(anchors, key=lambda p:
-                        math.dist(p, srodek(ra)) + math.dist(p, srodek(rb)))[:9]:
+                for c in _cele_ocenione(
+                        anchors,[(a,ra),(b,rb)],ocena_dodatkowa,limit=9):
                     add([(a, ra, True), (b, rb, True)], c)
 
     unique = {}
