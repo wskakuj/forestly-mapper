@@ -236,6 +236,59 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(geo.prostokat_w_poligonie(r,model)
                             for r in found))
 
+    def test_multiring_exterior_positions_cover_both_local_contours(self):
+        ring_a = [(0,0),(100,0),(100,100),(0,100),(0,0)]
+        ring_b = [(900,0),(1000,0),(1000,100),(900,100),(900,0)]
+        multi = {"kontury":[ring_a,ring_b],"kompletne":True}
+        desc = item('area:L3','opis',(0,0,30,30),multi)
+        candidates = list(engine._pozycje_zewnetrzne(
+            desc,engine.Granice([multi]),[multi],margines=2.5,
+            limit=96))
+        center = [engine.srodek(r) for r in candidates]
+        self.assertTrue(any(900 < x < 1000 and y > 100
+                            for x,y in center),
+                        "Drugi kontur potrzebuje osobnej siatki zewnetrznej")
+        self.assertTrue(any(0 < x < 100 and y > 100
+                            for x,y in center))
+
+    def test_targeted_joint_attempt_expands_pool_after_24_fail(self):
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(200,0),(300,0),(300,100),(200,100)]
+        elements = [
+            item('a:L2','litera',(30,30,45,45),pa),
+            item('a:L3','opis',(30,30,55,55),pa),
+            item('b:L2','litera',(230,30,245,45),pb),
+            item('b:L3','opis',(230,30,255,55),pb),
+        ]
+        seen_limits = []
+        def plans(group,*args,**kwargs):
+            code = group[0]['wydzielenie']
+            cap = kwargs.get('limit',24)
+            seen_limits.append(cap)
+            # Pierwszy przebieg po 24 dla obu wymusza konflikt
+            # tych dwóch grup, lecz po rozszerzeniu jeden może
+            # wykorzystać inną pozycję we własnym poligonie.
+            shift = (0 if code == 'a' else 200)
+            if cap == 24:
+                shift = 0
+            return [[dict(e,prostokat=(
+                (20 if e['rodzaj']=='litera' else 20)+shift,
+                (20 if e['rodzaj']=='litera' else 45),
+                (35 if e['rodzaj']=='litera' else 45)+shift,
+                (35 if e['rodzaj']=='litera' else 70)
+            )) for e in group]]
+        with patch.object(engine,'opcje_wydzielenia',side_effect=plans):
+            placed, report = engine.optymalizuj(
+                elements, wszystkie_poligony=[pa,pb],
+                wybrane_wydzielenia={'a','b'},
+                maks_grupa=2, przebiegi=1)
+        self.assertEqual(report['wspolna_proba']['sukces'],True)
+        self.assertEqual([p['limit_planow_na_wydzielenie']
+                          for p in report['wspolna_proba']['proby']],
+                         [24,72])
+        self.assertIn(72,seen_limits)
+        self.assertFalse(geo.waliduj_uklad(placed))
+
     def test_exact_joint_search_does_not_drop_necessary_third_plan(self):
         """A cheap partial combination is not sufficient for all three."""
         poly = [(0,0),(300,0),(300,300),(0,300)]
