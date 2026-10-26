@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 
 from app.core import diagnostyka_map as dm
+from app.core import geometria_ukladu as geo
 from app.core import kontury_map as km
 from app.core import opisy_na_mape as onm
 
@@ -99,6 +100,17 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
         raise ValueError("Nie znaleziono A1: " + ", ".join(sorted(wybrane - znalezione)))
     uuids = {e["wydzielenie"] for e in own}
     targets = [e for e in elementy if e["wydzielenie"] in uuids]
+    # Rysunek nie może sugerować, że każdy napis w prawym panelu jest
+    # poprawiony. Wylicz status docelowych wydzieleń także po symulacji.
+    issues_before = geo.waliduj_uklad(elementy)
+    issues_after = geo.waliduj_uklad(list(po.values()))
+    labels_by_uuid = {e["wydzielenie"]: e["tekst"] for e in own}
+    def unresolved(problems):
+        ids = {ident for issue in problems for ident in issue["elementy"]}
+        return sorted(labels_by_uuid[uuid] for uuid in uuids
+                      if any(e["id"] in ids for e in targets
+                             if e["wydzielenie"] == uuid))
+    wrong_before, wrong_after = unresolved(issues_before), unresolved(issues_after)
 
     focus = []
     for e in targets:
@@ -122,9 +134,9 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
     skipped = max(0, len(visible) - max_obiektow)
     visible = visible[:max_obiektow]
     panel_w = (szerokosc - 52) / 2
-    panel_h = wysokosc - 142
+    panel_h = wysokosc - 163
     lefts = [18, panel_w + 34]
-    top = 92
+    top = 112
     ratio = min((panel_w - 22) / (world[2] - world[0]),
                 (panel_h - 22) / (world[3] - world[1]))
     x_margin = (panel_w - (world[2] - world[0]) * ratio) / 2
@@ -174,9 +186,11 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
                 cx, cy = project(((rect[0] + rect[2]) / 2,
                                   (rect[1] + rect[3]) / 2), panel)
                 out.append(f'<text x="{_fmt(cx)}" y="{_fmt(cy)}" '
-                           f'fill="#1f2937" text-anchor="middle" font-size="12" '
+                           f'fill="#111827" text-anchor="middle" '
+                           f'font-size="{13 if e["rodzaj"] == "litera" else 11}" '
+                           f'font-weight="700" '
                            f'font-family="Arial,sans-serif" paint-order="stroke" '
-                           f'stroke="white" stroke-width="3">{label}</text>')
+                           f'stroke="#ffffff" stroke-width="1">{label}</text>')
             leader = e.get("wysiegnik")
             if leader:
                 (ax, ay), (bx, by) = project(leader[0], panel), project(leader[1], panel)
@@ -202,9 +216,16 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
         'Szacunkowe prostokaty tekstu, prawdziwe odcinki MAP; podglad NIE jest wydrukiem GEO-MAP'
         '</text>',
     ]
-    for panel, label in enumerate(("PRZED: zrodlo MAP", "PO: propozycja algorytmu")):
+    for panel, label in enumerate(("PRZED: zrodlo MAP",
+                                   "PO: propozycja algorytmu")):
         x = lefts[panel]
+        broken = wrong_before if panel == 0 else wrong_after
+        status = ("NIEROZWIAZANE: " + ", ".join(broken)) if broken else "Bez wykrytych kolizji w wybranych wydzieleniach"
+        color = "#b91c1c" if broken else "#166534"
         parts += [
+            f'<text x="{_fmt(x + 5)}" y="101" fill="{color}" '
+            f'font-size="13" font-weight="700" '
+            f'font-family="Arial,sans-serif">{html.escape(status)}</text>',
             f'<rect x="{_fmt(x)}" y="{top}" width="{_fmt(panel_w)}" '
             f'height="{_fmt(panel_h)}" fill="#f8fafc" stroke="#d1d5db"/>',
             f'<text x="{_fmt(x + 5)}" y="79" font-size="15" '
