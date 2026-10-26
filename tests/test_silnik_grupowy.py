@@ -223,6 +223,53 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(report['rozpatrzone_grupy'], 1)
         self.assertEqual(progress[0]['wydzielenie'], 'z')
 
+    def test_multipart_local_grid_finds_narrow_distant_ring(self):
+        near = [(0,0),(10,0),(10,10),(0,10),(0,0)]
+        far = [(1000,0),(1040,0),(1040,40),(1000,40),(1000,0)]
+        model = {"kontury":[near,far],"kompletne":True}
+        # Ogólna siatka bbox (szerokość 1040) pomija drugi pierścień.
+        e = item('a:L2','litera',(1,1,21,21),model)
+        found = list(engine._pozycje_wewnatrz(
+            e, engine.Granice([model]), margines=2.5, limit=9))
+        self.assertTrue(found, "Lokalna siatka musi odnalezc miejsce")
+        self.assertTrue(all(engine.srodek(r)[0] >= 1000 for r in found))
+        self.assertTrue(all(geo.prostokat_w_poligonie(r,model)
+                            for r in found))
+
+    def test_actual_label_blocker_selected_before_nearest_polygon(self):
+        """Geometrically distant owner may have a label blocking the target."""
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        near = [(100,0),(200,0),(200,100),(100,100)]
+        far = [(1000,0),(1100,0),(1100,100),(1000,100)]
+        target = item('a:L2','litera',(105,15,125,35),pa)
+        neighbor = item('c:L2','litera',(150,70,165,85),near)
+        blocker = item('d:L2','litera',(20,20,40,40),far)
+        plan_a = dict(target,prostokat=(20,20,40,40))
+        plan_d = dict(blocker,prostokat=(1030,20,1050,40))
+
+        def candidates(group,*args,**kwargs):
+            uuid = group[0]["wydzielenie"]
+            if uuid == 'a':
+                return [[plan_a]]
+            if uuid == 'd':
+                return [[plan_d]]
+            return [[group[0]]]
+
+        # Wg odległości do poligonów najbliższy jest c,
+        # ale realnym blokerem napisu a jest d.
+        with patch.object(engine,'opcje_wydzielenia',side_effect=candidates):
+            placed, report = engine.optymalizuj(
+                [target,neighbor,blocker],
+                wszystkie_poligony=[pa,near,far],
+                maks_grupa=2,przebiegi=1,
+                wybrane_wydzielenia={'a'})
+        by_id = {e['id']:e for e in placed}
+        self.assertEqual(by_id['a:L2']['prostokat'],plan_a['prostokat'])
+        self.assertEqual(by_id['d:L2']['prostokat'],plan_d['prostokat'])
+        self.assertEqual(by_id['c:L2']['prostokat'],neighbor['prostokat'])
+        self.assertGreaterEqual(report['udane_grupy'],1)
+        self.assertFalse(geo.waliduj_uklad(placed))
+
     def test_progress_callback_and_partial_scan(self):
         pa = [(0,0),(100,0),(100,100),(0,100)]
         pb = [(200,0),(300,0),(300,100),(200,100)]
