@@ -121,7 +121,40 @@ def elementy_z_mapy(mapa, skala=None, wysokosc_mm=2.5):
     return out, ostrzezenia
 
 
-def raport_mapa(sciezka, skala=None, wysokosc_mm=2.5):
+def szukaj_miejsca_wewnatrz(element, rozdzielczosc=26):
+    """Szukaj dowolnej pozycji całego napisu w swoim poligonie.
+
+    Nie uwzględnia sąsiadów, więc znaleziony wariant NIE musi być wolny
+    od kolizji. Brak wyniku NIE oznacza, że miejsca nie ma (skończona siatka).
+    Funkcja diagnostyczna — nie modyfikuje elementu ani mapy.
+    """
+    poligon = element["poligon"]
+    x0, y0, x1, y1 = element["prostokat"]
+    szerokosc, wysokosc = x1 - x0, y1 - y0
+    if szerokosc <= 0 or wysokosc <= 0 or len(poligon) < 3:
+        return None, "niepoprawny_rozmiar"
+    px0 = min(p[0] for p in poligon)
+    py0 = min(p[1] for p in poligon)
+    px1 = max(p[0] for p in poligon)
+    py1 = max(p[1] for p in poligon)
+    xmin, xmax = px0 + szerokosc / 2, px1 - szerokosc / 2
+    ymin, ymax = py0 + wysokosc / 2, py1 - wysokosc / 2
+    if xmin > xmax or ymin > ymax:
+        return None, "za_maly_bbox"
+    n = max(2, min(50, int(rozdzielczosc)))
+    for i in range(n):
+        cx = xmin + (xmax - xmin) * ((i + 0.5) / n)
+        for j in range(n):
+            cy = ymin + (ymax - ymin) * ((j + 0.5) / n)
+            nowy = (cx - szerokosc / 2, cy - wysokosc / 2,
+                     cx + szerokosc / 2, cy + wysokosc / 2)
+            if geo.punkt_w_poligonie((cx, cy), poligon) and (
+                    geo.prostokat_w_poligonie(nowy, poligon)):
+                return (cx, cy), "znaleziono"
+    return None, "nie_znaleziono_na_siatce"
+
+
+def raport_mapa(sciezka, skala=None, wysokosc_mm=2.5, sprawdz_miejsce=False):
     """Zwróć raport JSON-serializowalny, bez jakichkolwiek zmian pliku."""
     mapa = onm.wczytaj_mape(sciezka)
     skala = skala if skala is not None else skala_naglowka(mapa)
@@ -137,6 +170,18 @@ def raport_mapa(sciezka, skala=None, wysokosc_mm=2.5):
          else poza)[rodzaj] += 1
         if e["wysiegnik"]:
             wysiegniki[rodzaj] += 1
+    potencjal = Counter()
+    przyklady = []
+    if sprawdz_miejsce:
+        for e in elementy:
+            if geo.prostokat_w_poligonie(e["prostokat"], e["poligon"]):
+                continue
+            punkt, powod = szukaj_miejsca_wewnatrz(e)
+            potencjal[e["rodzaj"] + ":" + powod] += 1
+            if punkt is not None and len(przyklady) < 25:
+                przyklady.append({"id": e["id"], "tekst": e["tekst"],
+                                  "kandydat_srodek": [round(punkt[0], 3),
+                                                     round(punkt[1], 3)]})
     return {
         "plik": str(sciezka),
         "skala": skala,
@@ -148,6 +193,8 @@ def raport_mapa(sciezka, skala=None, wysokosc_mm=2.5):
         "poza": dict(poza),
         "wysiegniki": dict(wysiegniki),
         "liczby_problemow": dict(licznik),
+        "potencjal_wewnatrz": dict(potencjal) if sprawdz_miejsce else None,
+        "przyklady_mozliwych_przesuniec": przyklady,
         "problemy": problemy,
         "ostrzezenia": ostrzezenia,
         "uwaga": ("Wymiary etykiet są szacowane, a bez aktywnej biblioteki "
@@ -162,16 +209,23 @@ def main(argv=None):
                    help="Skala 1:N; domyślnie EXT z nagłówka mapy")
     p.add_argument("--wysokosc-mm", type=float, default=2.5)
     p.add_argument("--json", dest="wyjscie", help="Zapisz raport do JSON (mapa bez zmian)")
+    p.add_argument("--sprawdz-miejsce", action="store_true",
+                   help="Sprawdź siatką, które napisy poza poligonem da się przesunąć do środka (bez oceny kolizji z innymi)")
     p.add_argument("--pokaz", type=int, default=12,
                    help="Liczba pierwszych błędów do pokazania")
     a = p.parse_args(argv)
-    raport = raport_mapa(a.mapa, a.skala, a.wysokosc_mm)
+    raport = raport_mapa(a.mapa, a.skala, a.wysokosc_mm,
+                        sprawdz_miejsce=a.sprawdz_miejsce)
     print("MAPA:", raport["plik"])
     print("Skala 1:%s | litery: %d | opisy: %d" %
           (raport["skala"], raport["litery"], raport["opisy"]))
     print("W poligonie:", raport["wewnatrz"], "| poza:", raport["poza"])
     print("Wysięgniki:", raport["wysiegniki"])
     print("Wykryte problemy:", raport["liczby_problemow"])
+    if a.sprawdz_miejsce:
+        print("Potencjał umieszczenia wewnątrz (bez kolizji z sąsiadami):",
+              raport["potencjal_wewnatrz"])
+        print("UWAGA: brak kandydata na siatce nie dowodzi braku wolnego miejsca.")
     if raport["ostrzezenia"]:
         print("Ostrzeżenia o danych:", len(raport["ostrzezenia"]))
     for b in raport["problemy"][:max(a.pokaz, 0)]:
