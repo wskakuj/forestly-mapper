@@ -111,6 +111,23 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(big_centers)
         self.assertNotEqual(small_centers,big_centers)
 
+    def test_generator_connects_exterior_description_to_inside_letter(self):
+        poly = [(0,0),(40,0),(40,40),(0,40)]
+        letter = item('a:L2','litera',(14,14,24,24),poly)
+        desc = item('a:L3','opis',(0,0,75,75),poly)
+        plans = engine.opcje_wydzielenia(
+            [letter,desc],engine.Granice([poly]),[poly],limit=24)
+        mixed = [p for p in plans
+                 if any(e['rodzaj'] == 'litera' and not e['wysiegnik'] for e in p)
+                 and any(e['rodzaj'] == 'opis' and e['wysiegnik'] for e in p)]
+        self.assertTrue(mixed, "Generator nie znalazl polaczenia opisu z litera")
+        for plan in mixed:
+            inside_letter = next(e for e in plan if e['rodzaj'] == 'litera')
+            outside_desc = next(e for e in plan if e['rodzaj'] == 'opis')
+            self.assertTrue(geo.wysiegnik_trafia_w_litere(
+                outside_desc['wysiegnik'], inside_letter['prostokat']))
+            self.assertEqual(geo.waliduj_uklad(plan), [])
+
     def test_common_anchor_for_two_exterior_labels(self):
         poly = [(0,0),(18,0),(18,18),(0,18)]
         a = item('a:L2','litera',(4,4,24,24),poly)
