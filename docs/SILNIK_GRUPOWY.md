@@ -836,3 +836,70 @@ i \`main\` pozostają niezmienione.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_czyste_warianty_v13.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_czyste_warianty_v13.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_czyste_warianty_v13.svg"
 \`\`\`
+
+
+## Tryb całej mapy — od testów 4a/4b/4c do automatyzacji BYSŁAW
+
+Wcześniejsze wywołania \`--etykiety 4a 4b 4c\` służyły
+do testowania geometrii **tylko trzech wydzieleń**.
+Pełna mapa testowa BYSŁAW ma 268 oznaczonych wydzieleń,
+416 etykiet L2/L3 i 280 wyjściowych zgłoszeń walidatora.
+280 zgłoszeń **nie oznacza 280 wadliwych napisów**:
+jeden napis może występować w więcej niż jednym konflikcie.
+Po testach V13 samodzielny przykład 4a/4b/4c wciąż miał
+2 przecięcia dodatkowych linii, mimo braku kolizji napisów.
+Z tego powodu dalszy etap celowo nie wymaga kolejnej
+serii mikrotestów tych samych trzech etykiet.
+
+Polecenie \`--cala-mapa\` uruchamia:
+1. Pełen skan wszystkich konfliktowych grup bez domyślnego
+   ograniczenia \`--limit-grup 8\`; domyślnie 2 przebiegi
+   i wiązkowe przeszukiwanie sąsiedztwa.
+2. Automatyczne próby łączenia najtrudniejszych grup
+   w duety i trójki, z istniejącą dokładną, adaptacyjną
+   analizą 24/72/112. \`--maks-trudnych\` ogranicza
+   wyłącznie **dodatkowy etap**, nie pełen skan.
+3. Każda lokalna poprawka jest przyjmowana tylko wtedy,
+   gdy zbiór zgłoszonych błędów jest **ściśle mniejszy**
+   i nie zawiera żadnego nowego konfliktu.
+4. Oddzielny raport \`skutecznosc_calej_mapy\`:
+   ile napisów/wydzieleń nie ma problemów przed i po,
+   ile naprawiono, ile dopiero powstało, lista wciąż
+   problematycznych wydzieleń z liczbą/typami zgłoszeń.
+   Zgłoszenia mogą być nadliczbowe względem napisów.
+5. Odrębny, **nienadpisywalny** plik testowy \`.MAP\`
+   tworzony parametrem \`--map-kopia\` (opcjonalny).
+   Eksporter zmienia tylko odpowiednie linie L2/L3,
+   zachowuje teksty A1/A2 i obrysy P, przelicza
+   nagłówek N/CHK, weryfikuje SHA-256 oryginału i
+   **ponownie parsuje wszystkie etykiety** przed zapisem.
+   Przy niezgodności odmawia zapisania kopii.
+   Plik źródłowy nigdy nie jest otwierany do zapisu.
+
+Pierwszy pełny przebieg na lokalnym komputerze użytkownika:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --wiazka 16 --maks-grupa 3 --przebiegi 2 --maks-trudnych 24 --rundy-dodatkowe 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_CALA_MAPA_auto.json" --map-kopia "01_BYSŁAW_AUTOMAT_TEST.MAP"
+\`\`\`
+
+Jeżeli kopia \`01_BYSŁAW_AUTOMAT_TEST.MAP\` już istnieje,
+polecenie celowo przerwie eksport — wybierz **nową nazwę**,
+nie usuwaj oryginalnego \`01_BYSŁAW_z_opisami.MAP\`.
+Wygenerowana kopia nie jest certyfikowaną mapą:
+topologia poligonów o kilku konturach, rzeczywiste fonty
+GEO-MAP oraz przebieg wszystkich wysięgników mogą nadal
+wymagać kontroli. Otworzenie testowej kopii w GEO-MAP
+jest koniecznym krokiem weryfikacji po eksporcie.
+
+Podstawowy raport nie oznacza, że usunięto wszystkie
+problemy: \`nierozwiazane_wydzielenia\` jawnie pokazuje
+pozostałą pracę, a \`dopracowanie_niepelne\` odróżnia
+wyczerpany budżet prób od braku nowych możliwych pozycji.
+\`analiza_czesciowa=false\` znaczy, że wszystkie grupy
+zostały **przeskanowane**; nie znaczy, że wszystkie
+udało się naprawić. Osiągnięcie blisko 100% automatyzacji
+jest celem, a nie potwierdzonym wynikiem tego etapu.
