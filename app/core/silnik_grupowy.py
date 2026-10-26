@@ -487,8 +487,18 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                        if e.get("wysiegnik") is None
                        and not geo.prostokat_w_poligonie(
                            powieksz(e["prostokat"], margines), e["poligon"]))
+        # Kolejność UUID nie ma związku z trudnością mapy. Najpierw
+        # rozpatruj wydzielenia dotknięte największą liczbą aktualnych
+        # kolizji; pozostawienie ich na koniec sprawiało, że wcześniejsze
+        # ruchy łatwiejszych sąsiadów odbierały im wolną przestrzeń.
+        obciazenie = defaultdict(int)
+        for issue in problems:
+            for ident in set(issue["elementy"]):
+                if ident in obecne:
+                    obciazenie[obecne[ident]["wydzielenie"]] += 1
         todo = sorted((k for k, v in by_group.items()
-                       if any(e["id"] in touched for e in v)), key=str)
+                       if any(e["id"] in touched for e in v)),
+                      key=lambda k: (-obciazenie[k], str(k)))
         if wybrane is not None:
             pominiete_przez_wybor.update(k for k in todo if k not in wybrane)
             todo = [k for k in todo if k in wybrane]
