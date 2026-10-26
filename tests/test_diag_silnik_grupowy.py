@@ -24,6 +24,36 @@ class ReadOnlyMapTests(unittest.TestCase):
         ]
         path.write_bytes(onm.tekst_na_maz("\r\n".join(lines)))
 
+    def test_crossings_group_duplicate_layers_and_allow_own_boundary(self):
+        # Wysięgnik wychodzi spoza poligonu A do jego środka. Jedna
+        # własna granica jest oczekiwana; dwie warstwy zewnętrzne
+        # przecinające w identycznym miejscu = jeden punkt ostrzeżenia.
+        blocks = [
+            ["*5310 255 24 0", ":ID[A]", "P 1 0 0",
+             "P 1 20 0", "P 1 20 20", "P 1 0 20", "P 0 0 0"],
+            ["*4214 5 1 0", ":ID[B]", "P 1 -10 5", "P 1 -10 15"],
+            ["*5216 5 1 0", ":ID[C]", "P 1 -10 5", "P 1 -10 15"],
+        ]
+        lines = []
+        objects = []
+        for block in blocks:
+            objects.append({"start":len(lines), "linie":block})
+            lines.extend(block)
+        src = [{"id":"A:L3", "wydzielenie":"A", "rodzaj":"opis",
+                "tekst":"SO45|0.1", "wysiegnik":((-20,10),(10,10))}]
+        items = diag._przeciecia_wysiegnikow_z_obiektami(
+            src,objects,lines,{"A"})
+        self.assertEqual(len(items),1)
+        self.assertEqual(items[0]["liczba_punktow_przeciec"],2)
+        self.assertEqual(items[0]["liczba_dodatkowych_przeciec"],1)
+        by_point = {tuple(p["punkt"]):p for p in items[0]["punkty"]}
+        self.assertTrue(by_point[(0.0,10.0)]["wlasna_granica"])
+        self.assertFalse(by_point[(-10.0,10.0)]["wlasna_granica"])
+        self.assertEqual(by_point[(-10.0,10.0)]["typy_obiektow"],
+                         ["*4214","*5216"])
+        self.assertEqual(diag._przeciecia_wysiegnikow_z_obiektami(
+            src,objects,lines,{"B"}),[])
+
     def test_diagnostics_never_writes_source_map(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
@@ -34,6 +64,8 @@ class ReadOnlyMapTests(unittest.TestCase):
             self.assertEqual(result["liczba_napisow"], 2)
             self.assertEqual(result["liczba_poligonow"], 1)
             self.assertIn("po", result)
+            self.assertIn("przeciecia_wysiegnikow_obiekty_mapy",result)
+            self.assertIn("liczba_dodatkowych_przeciec_wysiegnikow",result)
 
     def test_json_report_is_separate_from_map(self):
         with TemporaryDirectory() as root:
