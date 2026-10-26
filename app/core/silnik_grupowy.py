@@ -314,7 +314,7 @@ def _rozlozone(probki, ile):
 
 
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
-                      odstep=2.5, limit=24):
+                      odstep=2.5, limit=24, ocena_dodatkowa=None):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
     grupa = sorted(grupa, key=lambda e: e["id"])
     inside = {e["id"]: list(_pozycje_wewnatrz(e, granice, margines)) for e in grupa}
@@ -422,7 +422,8 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         key = tuple((e["id"], tuple(round(v, 2) for v in e["prostokat"]),
                      tuple(round(v, 2) for v in e["wysiegnik"][1])
                      if e["wysiegnik"] else None) for e in plan)
-        score = _koszt(plan, original)
+        score = (_koszt(plan, original) +
+                 (ocena_dodatkowa(plan) if ocena_dodatkowa else 0.0))
         if key not in unique or score < unique[key][0]:
             unique[key] = (score, kind, plan)
     ordered = sorted(unique.items(), key=lambda item: (item[1][0], item[0]))
@@ -578,7 +579,8 @@ def _sasiedztwo(grupy, klucz, ile=5):
 
 
 
-def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
+def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep,
+                           ocena_dodatkowa=None):
     """Znajdź najtańszy bezkolizyjny układ z ograniczonych list kandydatów.
 
     Pełny przegląd kombinacji <=3 małych grup (zwykle 24^3) usuwa
@@ -601,7 +603,9 @@ def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
                    and _kolizja_miedzy(plan, [e], odstep)
                    for e, b in fixed):
                 continue
-            available.append((_koszt(plan, oryginaly), plan, bounds))
+            additional = ocena_dodatkowa(plan) if ocena_dodatkowa else 0.0
+            available.append((_koszt(plan, oryginaly) + additional,
+                              plan, bounds))
         available.sort(key=lambda x: (x[0],
                         tuple((e["id"], e["prostokat"]) for e in x[1])))
         counts[str(key)] = len(available)
@@ -683,7 +687,7 @@ def _maks_odstep_pary(plan):
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 szerokosc_wiazki=24, maks_grupa=5, przebiegi=2,
                 limit_grup=None, postep=None,
-                wybrane_wydzielenia=None):
+                wybrane_wydzielenia=None, ocena_dodatkowa=None):
     """Deterministycznie poprawia ciasne lokalne skupiska, nie psując reszty.
 
     Zwraca nową listę elementów i raport; nigdy nie zmienia wejścia.
@@ -709,10 +713,16 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
     # nie dla wszystkich 200+ wydzieleń już na starcie.
     opcje = {}
 
+    def ocena(plan):
+        return (_koszt(plan, old) +
+                (ocena_dodatkowa(plan) if ocena_dodatkowa else 0.0))
+
     def warianty(k):
         if k not in opcje:
+            opts = ({'ocena_dodatkowa': ocena_dodatkowa}
+                    if ocena_dodatkowa else {})
             opcje[k] = opcje_wydzielenia(
-                by_group[k], granice, poligony, margines, odstep)
+                by_group[k], granice, poligony, margines, odstep, **opts)
         return opcje[k]
 
     def issues():
@@ -745,14 +755,17 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 def candidates(key):
                     if width == 24:
                         return warianty(key)
+                    opts = ({'ocena_dodatkowa': ocena_dodatkowa}
+                            if ocena_dodatkowa else {})
                     return opcje_wydzielenia(
                         by_group[key], granice, poligony, margines,
-                        odstep, limit=width)
+                        odstep, limit=width, **opts)
                 attempt, report = _wspolny_plan_dokladny(
-                    wybrane, candidates, obecne, old, odstep)
+                    wybrane, candidates, obecne, old, odstep,
+                    ocena_dodatkowa=ocena_dodatkowa)
                 report["limit_planow_na_wydzielenie"] = width
                 if attempt is not None:
-                    candidate_cost = _koszt(attempt, old)
+                    candidate_cost = ocena(attempt)
                     report["koszt_znalezionego_ukladu"] = candidate_cost
                     report["maks_odstep_pary"] = _maks_odstep_pary(attempt)
                     if candidate_cost < best_cost - 1e-7:
@@ -825,7 +838,7 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
             blockage = _blokady_planow(warianty(key), obecne, key, odstep)
             candidates = []
             for blockers, plan in sorted(
-                    blockage, key=lambda x: (len(x[0]), _koszt(x[1], old),
+                    blockage, key=lambda x: (len(x[0]), ocena(x[1]),
                                             tuple(sorted(map(str, x[0]))))):
                 if 0 < len(blockers) < maks_grupa:
                     candidates.append(tuple(sorted(blockers, key=str)))
@@ -874,7 +887,7 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                                and _kolizja_miedzy(plan, [f], odstep)
                                for f, b in fixed_bounds):
                             continue
-                        approved.append((plan, _koszt(plan, old)))
+                        approved.append((plan, ocena(plan)))
                     for cost, placed in beam:
                         for plan, score in approved:
                             if _kolizja_miedzy(plan, placed, odstep):
