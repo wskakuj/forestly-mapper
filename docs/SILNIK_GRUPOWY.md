@@ -371,3 +371,39 @@ poprawne wg walidatora. Ulepszono również kontrast liter i opisów.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_kolejnosc_v3.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_kolejnosc_v3.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_kolejnosc_v3.svg"
 \`\`\`
+
+
+## Etap 6C — wybór realnych blokerów i lokalne siatki konturów
+
+Po teście \`byslaw_4abc_kolejnosc_v3.json\` nadal zmieniły się
+tylko 2 napisy (L2/L3 \`4b\`); dla \`4a\` i \`4c\` pozostały konflikty.
+W całej mapie liczba problemów spadła z 280 do 271, ale skan był
+celowany i nie jest to miara ukończenia całej mapy.
+
+Generator od tego etapu:
+- przeszukuje każdy pierścień także w lokalnej siatce 7×7; jedna
+  siatka na obrys całego wielokonturowego wydzielenia pomijała wąskie
+  składniki oddalone od środka ogólnego bbox;
+- rezerwuje w limicie 24 planów reprezentację różnych kierunków
+  wyprowadzenia zewnętrznych napisów, nie tylko rodzaje strategii;
+- zamiast dołączać jedynie najbliższe poligony, dla każdego planu
+  identyfikuje faktycznie blokujące napisy i wysięgniki, a następnie
+  próbuje w pierwszej kolejności wspólnie przesunąć **ich grupy**
+  (w limicie \`--maks-grupa\`). Odległość sąsiadów pozostaje awaryjna.
+  Nie zakłada, że bloker ma bliski geometrycznie poligon.
+
+\`--sprawdz-warianty\` umieszcza dodatkowo w JSON:
+\`minimalna_liczba_blokujacych_grup\`,
+\`najczestsze_blokady\` (UUID + A1 + liczba zablokowanych planów),
+\`przykladowe_minimalne_zestawy_blokad\`. Statystyki dotyczą
+ograniczonego zbioru planów w otoczeniu wejściowym, nie wszystkich
+teoretycznych położeń. Brak sukcesu nadal nie dowodzi braku miejsca.
+Dodano regresje na wąski drugi kontur i odległy poligon, którego
+przesunięty napis blokuje plan sąsiada. Źródłowy MAP nie jest zapisywany.
+
+Próba na prawdziwym BYSŁAW:
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_blokady_v4.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_blokady_v4.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_blokady_v4.svg"
+\`\`\`
