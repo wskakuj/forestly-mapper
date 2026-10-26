@@ -18,21 +18,39 @@ from app.core import uklad_opisow as uk
 
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
-              limit_grup=8, postep=None):
+              limit_grup=8, postep=None, etykiety=()):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     path = Path(sciezka)
     mapa = onm.wczytaj_mape(path)
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
     przed, ostrzezenia = dm.elementy_z_mapy(mapa, scale, wysokosc_mm)
     wszystkie = [o["punkty"] for o in uk.wszystkie_poligony(mapa)]
+    nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
+             if e["rodzaj"] == "litera"}
+    szukane = {x.strip().casefold() for x in etykiety if x.strip()}
+    znalezione = {uuid for uuid, name in nazwy.items()
+                  if name.strip().casefold() in szukane}
+    brak = szukane - {nazwy[uuid].strip().casefold()
+                     for uuid in znalezione}
+    if brak:
+        raise ValueError("Nie znaleziono etykiet A1: " + ", ".join(sorted(brak)))
+
+    def pokaz(event):
+        if postep:
+            identifier = event.get("wydzielenie")
+            if identifier is not None:
+                event = {**event, "nazwa": nazwy.get(identifier, "?")}
+            postep(event)
+
     if postep:
-        postep({"etap": "odczyt", "napisy": len(przed),
-                "wydzielenia": len({e["wydzielenie"] for e in przed})})
+        pokaz({"etap": "odczyt", "napisy": len(przed),
+               "wydzielenia": len({e["wydzielenie"] for e in przed})})
     po, raport = engine.optymalizuj(
         przed, wszystkie_poligony=wszystkie,
         szerokosc_wiazki=szerokosc_wiazki,
         maks_grupa=maks_grupa, przebiegi=przebiegi,
-        limit_grup=limit_grup, postep=postep)
+        limit_grup=limit_grup, postep=pokaz,
+        wybrane_wydzielenia=znalezione if szukane else None)
     orig = {e["id"]: e for e in przed}
     zmiany = []
     for e in po:
@@ -52,6 +70,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "skala": scale, "wysokosc_mm": wysokosc_mm,
         "liczba_napisow": len(przed), "liczba_poligonow": len(wszystkie),
         "liczba_wydzielen": len({e["wydzielenie"] for e in przed}),
+        "wybrane_etykiety": sorted(szukane),
+        "wybrane_uuid": sorted(znalezione),
         "przed": dict(Counter(e["typ"] for e in wczesniejsze)),
         "po": dict(Counter(e["typ"] for e in pozniejsze)),
         "zmienione_napisy": len(zmiany),
@@ -76,6 +96,8 @@ def main(argv=None):
     p.add_argument("--przebiegi", type=int, default=1)
     p.add_argument("--limit-grup", type=int, default=8,
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
+    p.add_argument("--etykiety", nargs="+", default=(),
+                   help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
     p.add_argument("--json", help="Zapisz raport w osobnym pliku .json")
     args = p.parse_args(argv)
     if args.json:
@@ -96,16 +118,20 @@ def main(argv=None):
                   event["wydzielenia"], "wydzielen; rozpoczynam analize...",
                   flush=True)
         else:
-            print("Grupa %d/%d, przebieg %d; analizuje wydzielenie %s" % (
+            print("Grupa %d/%d, przebieg %d; wydzielenie %s (%s)" % (
                 event["indeks"], event["liczba_grup"],
-                event["przebieg"], event["wydzielenie"]), flush=True)
+                event["przebieg"], event.get("nazwa", "?"),
+                event["wydzielenie"]), flush=True)
 
     print("Start diagnostyki GEO-MAP (MAP tylko do odczytu)...", flush=True)
-    result = diagnozuj(
-        args.mapa, args.skala, args.wysokosc_mm,
-        args.wiazka, args.maks_grupa, args.przebiegi,
-        limit_grup=None if args.limit_grup == 0 else args.limit_grup,
-        postep=postep)
+    try:
+        result = diagnozuj(
+            args.mapa, args.skala, args.wysokosc_mm,
+            args.wiazka, args.maks_grupa, args.przebiegi,
+            limit_grup=None if args.limit_grup == 0 else args.limit_grup,
+            postep=postep, etykiety=args.etykiety)
+    except ValueError as exc:
+        p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
     print("Skala: 1:%s | etykiety: %d | wydzielenia: %d" % (
         result["skala"], result["liczba_napisow"], result["liczba_wydzielen"]))
