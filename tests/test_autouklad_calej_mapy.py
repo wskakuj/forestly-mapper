@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from app.core import autouklad_calej_mapy as auto
+from app.core import diagnostyka_map as dm
 from app.core import diag_silnik_grupowy as diag
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
