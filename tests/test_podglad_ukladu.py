@@ -55,6 +55,16 @@ class PreviewTests(unittest.TestCase):
             self.assertEqual(before_map, src.read_bytes())
             self.assertEqual(before_json, report.read_bytes())
 
+    def test_includes_two_point_map_lines(self):
+        source = {"lines": [
+            "*5310 1 2 3", "P 1 0 0", "P 1 10 0", "P 0 0 0",
+            "*4214 1 2 3", "P 1 2 3", "P 1 4 5",
+        ]}
+        geometry = list(preview._obiekty_liniowe(source))
+        self.assertEqual(len(geometry), 2)
+        self.assertEqual(geometry[1]["punkty"], [(2.0, 3.0), (4.0, 5.0)])
+        self.assertEqual(preview._kontury(geometry[1]["linie"])[0][1], False)
+
     def test_open_line_is_not_closed_and_contours_remain_separate(self):
         contours = preview._kontury([
             "P 1 0 0", "P 1 10 0", "P 0 0 0",
