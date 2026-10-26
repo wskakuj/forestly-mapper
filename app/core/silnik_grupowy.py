@@ -443,6 +443,25 @@ def _obwiednie_nachodza(a, b):
                 or a[3] < b[1] or b[3] < a[1])
 
 
+def _blokady_planow(plany, obecne, wydzielenie, odstep):
+    """Rzeczywiste grupy blokujące każdy gotowy plan w danym otoczeniu.
+
+    Zwraca (frozenset UUID, plan). W przeciwieństwie do bliskości
+    poligonów uwzględnia także rzeczywiste pozycje napisów i wysięgników.
+    Używa obwiedni do ograniczenia kosztu.
+    """
+    fixed = [(e, _obwiednia_elementu(e, odstep))
+             for e in obecne.values() if e["wydzielenie"] != wydzielenie]
+    results = []
+    for plan in plany:
+        bounds = _obwiednia_planu(plan, odstep)
+        blockers = frozenset(e["wydzielenie"] for e, box in fixed
+                             if _obwiednie_nachodza(bounds, box)
+                             and _kolizja_miedzy(plan, [e], odstep))
+        results.append((blockers, plan))
+    return results
+
+
 def _sasiedztwo(grupy, klucz, ile=5):
     """Wybieraj grupy faktycznie bliskie geometrycznie, w skali etykiet.
 
@@ -553,9 +572,35 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
             neighbors = _sasiedztwo(by_group, key, max(1, maks_grupa))[1:]
             if not warianty(key):
                 continue
+            # Najpierw próbuj naprawy samotnej, potem wspólnie z tymi
+            # grupami, których NAPISY rzeczywiście blokują wariant celu.
+            # Bliskość geometryczna jest tylko planem rezerwowym.
+            blockage = _blokady_planow(warianty(key), obecne, key, odstep)
+            candidates = []
+            for blockers, plan in sorted(
+                    blockage, key=lambda x: (len(x[0]), _koszt(x[1], old),
+                                            tuple(sorted(map(str, x[0]))))):
+                if 0 < len(blockers) < maks_grupa:
+                    candidates.append(tuple(sorted(blockers, key=str)))
+            for n in neighbors:
+                candidates.append((n,))
+            for length in range(2, len(neighbors) + 1):
+                candidates.append(tuple(neighbors[:length]))
+            # Nie próbuj dwukrotnie tych samych zestawów; ogranicz
+            # rozmiar poszukiwań i nie generuj wszystkich kombinacji.
+            unique_sets = []
+            seen_sets = set()
+            for group_set in [()] + candidates:
+                canonical = tuple(sorted(group_set, key=str))
+                if (len(canonical) >= maks_grupa or canonical in seen_sets):
+                    continue
+                if any(k not in by_group for k in canonical):
+                    continue
+                seen_sets.add(canonical)
+                unique_sets.append(canonical)
             repaired = False
-            for liczba_sasiadow in range(len(neighbors) + 1):
-                selected = [key] + neighbors[:liczba_sasiadow]
+            for group_set in unique_sets:
+                selected = [key] + list(group_set)
                 if any(not warianty(k) for k in selected):
                     continue
                 fixed = [e for e in obecne.values()
