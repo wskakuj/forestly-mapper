@@ -515,8 +515,10 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
             return (kind, "prawo" if cx >= ox else "lewo")
         return (kind, "gora" if cy >= oy else "dol")
     def rodzina_rozszerzona(entry):
-        # Przy większym limicie nie wystarczy rozróżniać strony opisu.
-        # Zewnętrzna litera może potrzebować innej strony poligonu.
+        # Sama strona etykiety nie wystarcza do zachowania wariantu
+        # kartograficznie czystego. Przy aktywnej karze rezerwujemy
+        # osobną rodzinę dla planów BEZ dodatkowych przecięć,
+        # nawet gdy są droższe od 112 pierwszych wariantów.
         base = rodzina(entry)
         if not rozszerzone:
             return base
@@ -524,15 +526,25 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         letter = next((e for e in plan if e["rodzaj"] == "litera"
                        and e.get("wysiegnik")), None)
         if letter is None:
-            return base + ("litera_wewnatrz",)
-        cx, cy = srodek(letter["prostokat"])
-        ox, oy = srodek(bbox(letter["poligon"]))
-        if abs(cx - ox) >= abs(cy - oy):
-            side = "prawo" if cx >= ox else "lewo"
+            base += ("litera_wewnatrz",)
         else:
-            side = "gora" if cy >= oy else "dol"
-        return base + (side,)
-    groups = sorted({rodzina_rozszerzona(entry) for entry in ordered})
+            cx, cy = srodek(letter["prostokat"])
+            ox, oy = srodek(bbox(letter["poligon"]))
+            if abs(cx - ox) >= abs(cy - oy):
+                side = "prawo" if cx >= ox else "lewo"
+            else:
+                side = "gora" if cy >= oy else "dol"
+            base += (side,)
+        if ocena_dodatkowa is not None:
+            risk = ocena_dodatkowa(plan)
+            base += ("bez_kary_map" if risk <= geo.EPS
+                     else "z_kara_map",)
+        return base
+    # Rodzina jest cechą planu: wyznacz ją tylko raz. Jej
+    # przeliczanie wewnątrz dwóch pętli kosztowało setki tysięcy
+    # zbędnych odczytów indeksu przecięć na dużych mapach.
+    families = {key: rodzina_rozszerzona(entry) for key, entry in ordered}
+    groups = sorted(set(families.values()))
     if not groups:
         return []
     # Rezerwuj udzial dla kazdej wykrytej strategii, niezaleznie od jej
@@ -543,9 +555,7 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
     for kind in groups:
         selected = 0
         for key, (cost, family, plan) in ordered:
-            if (family != kind[0] or
-                    rodzina_rozszerzona((key, (cost, family, plan))) != kind or
-                    key in used):
+            if (families[key] != kind or key in used):
                 continue
             picked.append(plan)
             used.add(key)
