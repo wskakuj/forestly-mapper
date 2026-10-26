@@ -1,0 +1,50 @@
+import unittest
+from app.core import geometria_ukladu as geo
+from app.core import silnik_grupowy as engine
+
+
+def item(name, kind, rect, poly, district=None):
+    return dict(id=name, wydzielenie=district or name.split(':')[0],
+                rodzaj=kind, prostokat=rect, poligon=poly, wysiegnik=None)
+
+
+class EngineTests(unittest.TestCase):
+    def test_empty(self):
+        self.assertEqual(engine.optymalizuj([])[0], [])
+
+    def test_duplicate_ids(self):
+        poly = [(0,0),(40,0),(40,40),(0,40)]
+        e = item('a:L2','litera',(10,10,15,15),poly)
+        with self.assertRaises(ValueError):
+            engine.optymalizuj([e,e])
+
+    def test_internal_pair_no_overlap(self):
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        a = item('a:L2','litera',(45,45,55,55),poly)
+        b = item('a:L3','opis',(45,45,65,65),poly)
+        output, report = engine.optymalizuj([a,b], wszystkie_poligony=[poly])
+        self.assertFalse(geo.prostokaty_koliduja(
+            output[0]['prostokat'],output[1]['prostokat']))
+        self.assertFalse(report['nierozwiazane'])
+        self.assertEqual(a['prostokat'],(45,45,55,55))
+
+    def test_common_anchor_for_two_exterior_labels(self):
+        poly = [(0,0),(18,0),(18,18),(0,18)]
+        a = item('a:L2','litera',(4,4,24,24),poly)
+        b = item('a:L3','opis',(4,4,24,24),poly)
+        boundaries = engine.Granice([poly])
+        plans = engine.opcje_wydzielenia([a,b],boundaries,[poly])
+        both = [p for p in plans if all(e['wysiegnik'] for e in p)]
+        if both:
+            self.assertEqual(both[0][0]['wysiegnik'][1],
+                             both[0][1]['wysiegnik'][1])
+
+    def test_deterministic(self):
+        poly = [(0,0),(90,0),(90,90),(0,90)]
+        items = [item('a:L2','litera',(20,20,32,32),poly),
+                 item('a:L3','opis',(20,20,42,42),poly)]
+        self.assertEqual(engine.optymalizuj(items),engine.optymalizuj(items))
+
+
+if __name__ == '__main__':
+    unittest.main()
