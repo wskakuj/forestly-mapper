@@ -126,6 +126,18 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
             centers.append((bounds[0] + (i + .5) * (bounds[2] - bounds[0]) / n,
                             bounds[1] + (j + .5) * (bounds[3] - bounds[1]) / n))
     for ring in geo.kontury_poligonu(poly):
+        # Globalna siatka może ominąć wąski rozłączny obszar lub
+        # fragment pierścienia. Każdy pierścień ma dodatkową lokalną
+        # siatkę, nadal filtrowaną przez CAŁE wydzielenie (dziury).
+        if len(ring) < 3:
+            continue
+        local = bbox(ring)
+        centers.append(srodek(local))
+        for i in range(7):
+            for j in range(7):
+                centers.append((
+                    local[0] + (i + .5) * (local[2] - local[0]) / 7,
+                    local[1] + (j + .5) * (local[3] - local[1]) / 7))
         for a, b, c in zip(
                 ring, ring[1:] + ring[:1], ring[2:] + ring[:2]):
             centers.append(((a[0] + b[0] + c[0]) / 3,
@@ -342,7 +354,24 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         if key not in unique or score < unique[key][0]:
             unique[key] = (score, kind, plan)
     ordered = sorted(unique.items(), key=lambda item: (item[1][0], item[0]))
-    groups = sorted({entry[1][1] for entry in ordered})
+    # Przy gęstych skupiskach 24 najtańsze warianty mogą przypaść
+    # tylko jednej stronie wydzielenia. Oprócz strategii (L2/L3
+    # wewnątrz/poza) rezerwuj wariant z różnych kierunków wyprowadzenia
+    # opisu. Pozostałe miejsca zostaną przydzielone według kosztu.
+    def rodzina(entry):
+        _, (cost, kind, plan) = entry
+        exterior = next((e for e in plan if e["rodzaj"] == "opis"
+                         and e.get("wysiegnik")), None)
+        if exterior is None:
+            exterior = next((e for e in plan if e.get("wysiegnik")), None)
+        if exterior is None:
+            return (kind, "wewnatrz")
+        cx, cy = srodek(exterior["prostokat"])
+        ox, oy = srodek(bbox(exterior["poligon"]))
+        if abs(cx - ox) >= abs(cy - oy):
+            return (kind, "prawo" if cx >= ox else "lewo")
+        return (kind, "gora" if cy >= oy else "dol")
+    groups = sorted({rodzina(entry) for entry in ordered})
     if not groups:
         return []
     # Rezerwuj udzial dla kazdej wykrytej strategii, niezaleznie od jej
@@ -353,7 +382,9 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
     for kind in groups:
         selected = 0
         for key, (cost, family, plan) in ordered:
-            if family != kind or key in used:
+            if (family != kind[0] or
+                    rodzina((key, (cost, family, plan))) != kind or
+                    key in used):
                 continue
             picked.append(plan)
             used.add(key)
