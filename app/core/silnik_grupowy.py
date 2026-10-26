@@ -377,13 +377,16 @@ def _sasiedztwo(grupy, klucz, ile=5):
 
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 szerokosc_wiazki=24, maks_grupa=5, przebiegi=2,
-                limit_grup=None, postep=None):
+                limit_grup=None, postep=None,
+                wybrane_wydzielenia=None):
     """Deterministycznie poprawia ciasne lokalne skupiska, nie psując reszty.
 
     Zwraca nową listę elementów i raport; nigdy nie zmienia wejścia.
     Jeśli ograniczone przeszukiwanie nie znajduje bezkolizyjnego układu,
     pozostawia problem jawnie nierozwiązany, zamiast produkować błędne linie.
     """
+    wybrane = (None if wybrane_wydzielenia is None
+               else frozenset(wybrane_wydzielenia))
     if len({e["id"] for e in elementy}) != len(elementy):
         raise ValueError("Powtórzone identyfikatory etykiet")
     if not elementy:
@@ -414,6 +417,7 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
     wykonane = 0
     rozpatrzone = 0
     pominiete_przez_limit = 0
+    pominiete_przez_wybor = set()
     for przebieg in range(max(1, przebiegi)):
         problems = issues()
         touched = {ident for problem in problems for ident in problem["elementy"]}
@@ -423,6 +427,9 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                            powieksz(e["prostokat"], margines), e["poligon"]))
         todo = sorted((k for k, v in by_group.items()
                        if any(e["id"] in touched for e in v)), key=str)
+        if wybrane is not None:
+            pominiete_przez_wybor.update(k for k in todo if k not in wybrane)
+            todo = [k for k in todo if k in wybrane]
         if limit_grup is not None:
             # Limit dotyczy całego wywołania, a nie każdego przebiegu.
             budget = max(0, limit_grup - rozpatrzone)
@@ -507,7 +514,9 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
         "przesuniete": changed, "udane_grupy": wykonane,
         "rozpatrzone_grupy": rozpatrzone,
         "pominiete_przez_limit": pominiete_przez_limit,
-        "analiza_czesciowa": pominiete_przez_limit > 0,
+        "pominiete_przez_wybor": len(pominiete_przez_wybor),
+        "analiza_czesciowa": (pominiete_przez_limit > 0
+                              or bool(pominiete_przez_wybor)),
         "nierozwiazane": po,
         "ostrzezenie": ("Skończona siatka i wiązka: brak rozwiązania nie dowodzi "
                         "braku miejsca. Przy aktywnym limicie grup "
