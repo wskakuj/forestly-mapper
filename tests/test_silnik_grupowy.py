@@ -35,9 +35,31 @@ class EngineTests(unittest.TestCase):
         boundaries = engine.Granice([poly])
         plans = engine.opcje_wydzielenia([a,b],boundaries,[poly])
         both = [p for p in plans if all(e['wysiegnik'] for e in p)]
-        if both:
-            self.assertEqual(both[0][0]['wysiegnik'][1],
-                             both[0][1]['wysiegnik'][1])
+        self.assertTrue(both, "Brak poprawnej pary z dwoma wysiegnikami")
+        self.assertEqual(both[0][0]['wysiegnik'][1],
+                         both[0][1]['wysiegnik'][1])
+        self.assertEqual(geo.waliduj_uklad(both[0]), [])
+
+    def test_group_neighbors_do_not_include_distant_polygons(self):
+        a = [(0,0),(30,0),(30,30),(0,30)]
+        nearby = [(30,0),(60,0),(60,30),(30,30)]
+        distant = [(1000,0),(1030,0),(1030,30),(1000,30)]
+        groups = {
+            'a': [item('a:L2','litera',(10,10,18,18),a)],
+            'near': [item('near:L2','litera',(35,10,43,18),nearby)],
+            'far': [item('far:L2','litera',(1010,10,1018,18),distant)],
+        }
+        self.assertEqual(engine._sasiedztwo(groups,'a'),['a','near'])
+
+    def test_two_exterior_labels_get_same_target(self):
+        poly = [(0,0),(18,0),(18,18),(0,18)]
+        a = item('a:L2','litera',(4,4,24,24),poly)
+        b = item('a:L3','opis',(4,4,24,24),poly)
+        after, report = engine.optymalizuj([a,b],wszystkie_poligony=[poly])
+        self.assertEqual(report['nierozwiazane'], [])
+        self.assertTrue(all(e['wysiegnik'] is not None for e in after))
+        self.assertEqual(after[0]['wysiegnik'][1],after[1]['wysiegnik'][1])
+        self.assertEqual(geo.waliduj_uklad(after), [])
 
     def test_deterministic(self):
         poly = [(0,0),(90,0),(90,90),(0,90)]
