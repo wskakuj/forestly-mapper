@@ -451,3 +451,46 @@ py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_wspolnie_v
 Po wykonaniu porównaj \`wspolna_proba.sukces\` oraz statusy
 \`NIEROZWIAZANE\` w SVG; same liczby problemów na całej mapie
 nie są wystarczającym potwierdzeniem.
+
+
+## Etap 6E — osobne obszary zewnętrzne i adaptacyjne poszukiwanie planów
+
+Raport \`byslaw_4abc_wspolnie_v5.json\` wykazał
+\`raport_silnika.wspolna_proba.sukces=false\`:
+**wszystkie trzy wydzielenia miały po 24 plany
+niekolizyjne z NIERUCHOMYM otoczeniem**, ale z tych list
+nie istniała wspólna bezkolizyjna trójka. Fallback poprawił
+\`4b\` i \`4c\` (4 napisy); \`4a\` nadal pozostało
+niepoprawione. 280 → 267 problemów całej mapy.
+Brak konfiguracji w ograniczonej puli NIE dowodzi braku miejsca.
+
+Dwie poprawki o ogólnym znaczeniu:
+1. Kandydaci **zewnętrzni** powstają wokół osobnego bbox
+   każdego rzeczywistego konturu, nie tylko bbox wszystkich
+   konturów razem. Kolejki globalne i lokalne są przeplatane,
+   a walidacja nadal sprawdza własny poligon, pozostałe granice
+   i napisy. Dla jednokonturowych obiektów zachowujemy
+   dotychczasowy sposób próbkowania.
+2. Wyłącznie dla jawnie wybranego skupiska 2–3 wydzieleń
+   dokładny solver próbuje kolejno **24, 72, 112 planów** na
+   wydzielenie. Szersze zestawy próbek reprezentują różne
+   kierunki i dalsze odległości *zarówno litery, jak i opisu*.
+   Przerwij przy pierwszym pełnym sukcesie, nie uruchamiaj
+   droższych prób bez potrzeby. Dla diagnozy całej mapy lub
+   pojedynczego wydzielenia te dodatkowe próby nie są
+   uruchamiane.
+
+Raport \`raport_silnika.wspolna_proba.proby\` zawiera
+\`limit_planow_na_wydzielenie\`, liczbę planów pozostałych
+po odrzuceniu nieruchomych przeszkód, \`sukces\` i
+\`zgodne_pary_planow\` dla każdej pary grup. Zliczanie
+zgodnych par wskazuje, **czy istnieje wzajemne dopasowanie
+co najmniej dwóch grup**, zanim ocenimy kompletne układy
+trójki. Nadal nie jest to dowód optymalności nad ciągłą
+przestrzenią geometrii. Proszę zweryfikować czytelność
+wyniku na SVG i następnie w GEO-MAP.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_adaptacja_v6.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_adaptacja_v6.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_adaptacja_v6.svg"
+\`\`\`
