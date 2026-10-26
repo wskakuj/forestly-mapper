@@ -74,6 +74,21 @@ class ReadOnlyMapTests(unittest.TestCase):
         self.assertEqual(warnings[0]["id"], "MULTI")
         self.assertEqual(warnings[0]["liczba_sekcji_p0"], 2)
 
+    def test_candidate_debug_report_does_not_write_to_map(self):
+        with TemporaryDirectory() as root:
+            src = Path(root) / "test.MAP"
+            self.sample(src)
+            original = src.read_bytes()
+            result = diag.diagnozuj(
+                src, skala=4000, etykiety=["a"], sprawdz_warianty=True)
+            data = result["diagnostyka_wariantow"]
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["uuid"], "TEST-UUID")
+            self.assertIn("wewnetrzne", data[0]["kandydaci"]["litera"])
+            self.assertIn("zewnetrzne", data[0]["kandydaci"]["opis"])
+            self.assertIn("plany_bez_kolizji_z_innymi_etykietami", data[0])
+            self.assertEqual(original, src.read_bytes())
+
     def test_rejects_map_as_report_target(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
