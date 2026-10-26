@@ -28,6 +28,18 @@ class EngineTests(unittest.TestCase):
         self.assertFalse(report['nierozwiazane'])
         self.assertEqual(a['prostokat'],(45,45,55,55))
 
+    def test_keep_exterior_alternatives_even_with_many_inside_candidates(self):
+        poly = [(0,0),(120,0),(120,120),(0,120)]
+        a = item('a:L2','litera',(40,40,50,55),poly)
+        b = item('a:L3','opis',(42,41,64,76),poly)
+        plans = engine.opcje_wydzielenia(
+            [a,b],engine.Granice([poly]),[poly],limit=24)
+        self.assertTrue(any(all(e['wysiegnik'] is None for e in p) for p in plans))
+        self.assertTrue(any(any(e['wysiegnik'] is not None for e in p) for p in plans),
+                        'Nie mozna odrzucic wszystkich strategii z wysiegnikiem')
+        self.assertLessEqual(len(plans),24)
+        self.assertTrue(all(geo.waliduj_uklad(p) == [] for p in plans))
+
     def test_common_anchor_for_two_exterior_labels(self):
         poly = [(0,0),(18,0),(18,18),(0,18)]
         a = item('a:L2','litera',(4,4,24,24),poly)
