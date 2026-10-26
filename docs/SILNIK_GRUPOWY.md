@@ -157,3 +157,30 @@ Nowa kontrola tylko do odczytu:
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --json "byslaw_3h_etap4b.json"
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 4 --wiazka 12 --przebiegi 1 --json "byslaw_4abc_etap4b.json"
 ```
+
+## Regresja 3h — generator zewnętrzny, próba 4c
+
+W raporcie `byslaw_3h_etap4b.json` po odblokowaniu wnętrz sąsiednich
+poligonów nie było poprawy: 0 przesuniętych napisów, 0 udanych grup,
+pozostały dwa problemy `3h`. Analiza rzeczywistej geometrii pokazała,
+że w dotychczasowych 80 próbkach na każdy rodzaj napisu dla opisu
+przechodziły test granic tylko cztery pozycje, ale każda nachodziła na
+inny napis. To nie dowodzi braku miejsca: po rozszerzeniu próbek
+wzdłuż krawędzi i odległości proporcjonalnych do wysokości etykiety
+udało się wskazać wolną pozycję z możliwym prostym wysięgnikiem
+(w niezależnej kontroli geometrycznej, nadal do potwierdzenia solverem).
+Warianty nie używają na sztywno nazw, UUID ani współrzędnych BYSŁAW.
+
+Diagnostyka pozwala teraz sprawdzić etap eliminacji wariantów
+(`--sprawdz-warianty`, wymaga `--etykiety`):
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --sprawdz-warianty --json "byslaw_3h_etap4c.json"
+```
+
+Raport `diagnostyka_wariantow` zawiera: liczbę generowanych pozycji
+wewnętrznych i zewnętrznych, liczbę kompletnych konfiguracji dla
+wydzielenia oraz liczbę takich konfiguracji, które nie kolidują
+z pozostałymi oryginalnymi napisami. To ograniczona próbka do 24
+wariantów na grupę, nie dowód optymalności i nie zamiennik sprawdzenia
+wyglądu w GEO-MAP. Plik wejściowy .MAP jest tylko odczytywany.
