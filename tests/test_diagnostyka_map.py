@@ -1,6 +1,6 @@
 """Testy parsowania podpisów GEO-MAP i raportu, bez zapisu do map."""
 import unittest
-from app.core.diagnostyka_map import elementy_z_mapy, skala_naglowka
+from app.core.diagnostyka_map import elementy_z_mapy, skala_naglowka, szukaj_miejsca_wewnatrz
 
 
 class DiagnostykaMapTest(unittest.TestCase):
@@ -42,6 +42,20 @@ class DiagnostykaMapTest(unittest.TestCase):
         self.assertEqual(len(elements), 1)
         self.assertEqual(elements[0]["rodzaj"], "litera")
         self.assertFalse(warnings)
+
+    def test_mozna_znalezc_miejsce_wewnatrz(self):
+        element = {"prostokat": (110, 110, 120, 120),
+                   "poligon": [(0, 0), (100, 0), (100, 100), (0, 100)]}
+        punkt, powod = szukaj_miejsca_wewnatrz(element)
+        self.assertIsNotNone(punkt)
+        self.assertEqual(powod, "znaleziono")
+
+    def test_maly_poligon_nie_pomiesci_napisu(self):
+        element = {"prostokat": (0, 0, 20, 20),
+                   "poligon": [(0, 0), (10, 0), (10, 10), (0, 10)]}
+        punkt, powod = szukaj_miejsca_wewnatrz(element)
+        self.assertIsNone(punkt)
+        self.assertEqual(powod, "za_maly_bbox")
 
 
 if __name__ == "__main__":
