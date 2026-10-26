@@ -6,6 +6,7 @@ Zmienia tylko offsety etykiet L2/L3 i ich proste wysięgniki w obiektach
 kodowaniu MAZOWIA. Ponownie parsuje wynik PRZED zapisaniem nowej kopii.
 """
 from pathlib import Path
+import hashlib
 import math
 
 from app.core import diagnostyka_map as dm
@@ -115,6 +116,9 @@ def eksportuj_kopie(sciezka_map, raport, sciezka_wynikowa):
     if Path(raport.get("plik_wejsciowy","")).name != source.name:
         raise ValueError("Raport pochodzi z innego pliku MAP")
     source_map=onm.wczytaj_mape(source)
+    expected_hash=raport.get("sha256_zrodla")
+    if expected_hash and hashlib.sha256(source_map["raw"]).hexdigest()!=expected_hash:
+        raise ValueError("MAP zmienila sie po analizie; uruchom ponownie skan")
     lines=list(source_map["lines"])
     positions=_mapowanie_linii(source_map)
     edits=raport.get("zmiany",[])
