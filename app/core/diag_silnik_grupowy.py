@@ -128,10 +128,13 @@ def _przeciecia_wysiegnikow_z_obiektami(elementy, obiekty, lines,
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
               limit_grup=8, postep=None, etykiety=(),
-              sprawdz_warianty=False, kara_przeciecia=0.0):
+              sprawdz_warianty=False, kara_przeciecia=0.0,
+              kara_wielokrotnej_granicy=0.0):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     if kara_przeciecia < 0:
         raise ValueError('--kara-przeciecia nie moze byc ujemna')
+    if kara_wielokrotnej_granicy < 0:
+        raise ValueError('--kara-wielokrotnej-granicy nie moze byc ujemna')
     path = Path(sciezka)
     mapa = onm.wczytaj_mape(path)
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
@@ -147,7 +150,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
                     and not km.model_wydzielenia(o["linie"])["kompletne"]]
     indeks_przeciec = pm.IndeksPrzeciec(obiekty, mapa['lines'])
     dodatkowy_koszt = (lambda plan: indeks_przeciec.kara_planu(
-        plan, kara_przeciecia)) if kara_przeciecia else None
+        plan, kara_przeciecia, kara_wielokrotnej_granicy)) if (
+            kara_przeciecia or kara_wielokrotnej_granicy) else None
     nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
              if e["rodzaj"] == "litera"}
     szukane = {x.strip().casefold() for x in etykiety if x.strip()}
@@ -220,7 +224,11 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "przeciecia_wysiegnikow_obiekty_mapy": przeciecia,
         "liczba_dodatkowych_przeciec_wysiegnikow": sum(
             item["liczba_dodatkowych_przeciec"] for item in przeciecia),
+        "liczba_nadmiarowych_przeciec_wlasnej_granicy": sum(
+            item["liczba_nadmiarowych_przeciec_wlasnej_granicy"]
+            for item in przeciecia),
         "kara_za_przeciecie": kara_przeciecia,
+        "kara_wielokrotnej_granicy": kara_wielokrotnej_granicy,
         "koszt_kary_wybranego_ukladu": (
             dodatkowy_koszt([e for e in po
                              if not szukane or e['wydzielenie'] in znalezione])
@@ -248,6 +256,8 @@ def main(argv=None):
                    help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
     p.add_argument('--kara-przeciecia', type=float, default=0.0,
                    help='Miekka kara kosztowa za dodatkowe przeciecie linii MAP (0=bez kary)')
+    p.add_argument('--kara-wielokrotnej-granicy',type=float,default=0.0,
+                   help='Miekka kara za kazde przecięcie WLASNEJ granicy ponad pierwsze (0=bez kary)')
     p.add_argument("--sprawdz-warianty", action="store_true",
                    help="Policz odrzucone warianty (wymaga --etykiety)")
     p.add_argument("--json", help="Zapisz raport w osobnym pliku .json")
@@ -265,6 +275,8 @@ def main(argv=None):
         p.error("--limit-grup nie moze byc ujemny")
     if args.kara_przeciecia < 0:
         p.error('--kara-przeciecia nie moze byc ujemna')
+    if args.kara_wielokrotnej_granicy < 0:
+        p.error('--kara-wielokrotnej-granicy nie moze byc ujemna')
     if args.sprawdz_warianty and not args.etykiety:
         p.error("--sprawdz-warianty wymaga --etykiety")
 
@@ -287,7 +299,8 @@ def main(argv=None):
             limit_grup=None if args.limit_grup == 0 else args.limit_grup,
             postep=postep, etykiety=args.etykiety,
             sprawdz_warianty=args.sprawdz_warianty,
-            kara_przeciecia=args.kara_przeciecia)
+            kara_przeciecia=args.kara_przeciecia,
+            kara_wielokrotnej_granicy=args.kara_wielokrotnej_granicy)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
