@@ -543,7 +543,8 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
     # Rodzina jest cechą planu: wyznacz ją tylko raz. Jej
     # przeliczanie wewnątrz dwóch pętli kosztowało setki tysięcy
     # zbędnych odczytów indeksu przecięć na dużych mapach.
-    families = {key: rodzina_rozszerzona(entry) for key, entry in ordered}
+    families = {key: rodzina_rozszerzona((key, entry))
+                for key, entry in ordered}
     groups = sorted(set(families.values()))
     if not groups:
         return []
