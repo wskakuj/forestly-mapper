@@ -184,3 +184,40 @@ wydzielenia oraz liczbę takich konfiguracji, które nie kolidują
 z pozostałymi oryginalnymi napisami. To ograniczona próbka do 24
 wariantów na grupę, nie dowód optymalności i nie zamiennik sprawdzenia
 wyglądu w GEO-MAP. Plik wejściowy .MAP jest tylko odczytywany.
+
+
+## Diagnoza 3h — fałszywa granica z otwartej polilinii (etap 4D)
+
+Raport `byslaw_3h_etap4c.json`: 48 zewnętrznych kandydatów
+litery, 11 dla opisu, **zero wewnętrznych** dla obu;
+24 plany `litera+opis`, żaden zgodny z otoczeniem. Mapa bez zmian.
+
+Przy weryfikacji rzeczywistej `01_BYSŁAW_z_opisami.MAP`
+odkryto, że indeks `Granice` bezwarunkowo domykał każdą
+geometrię przez ostatni->pierwszy wierzchołek. Otwarte polilinie
+`*4214` NIE są poligonami. W szczególności obiekt
+`96EDF087-1AA4-49C7-AB10-759823916B05` miał
+fikcyjne zamknięcie biegnące przez `3h`.
+Sprawdzenie rzeczywistych segmentów źródła pokazało 4 wewnętrzne
+położenia litery (siatka 9×9), z których żadne nie przecina
+realnych linii mapy (na tym etapie jedynie badanie krawędzi).
+
+**Poprawka uniwersalna:** indeks obsługuje teraz
+`{"punkty": points, "zamkniety": bool}`; otwarte linie nie
+otrzymują dodatkowego segmentu. Diagnostyka odczytuje
+`zamkniety` z faktycznego zamknięcia w źródle GEO-MAP
+(pierwszy wierzchołek równy ostatniemu).
+Stare wywołania z samymi listami punktów pozostają
+zgodne jako deklarowane poligony. Testy syntetyczne
+sprawdzają brak fikcyjnego przekątnego odcinka.
+
+Test po aktualizacji:
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --sprawdz-warianty --json "byslaw_3h_etap4d.json"
+```
+
+Oczekujemy większej liczby kandydatów wewnętrznych litery,
+ale to nie jest jeszcze potwierdzenie pełnego rozwiązania:
+walidator może odrzucić nadal wszystkie kompletne plany
+z powodu innych napisów, wysięgników albo ograniczonej siatki.
