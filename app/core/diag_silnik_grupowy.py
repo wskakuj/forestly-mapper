@@ -5,6 +5,7 @@ Nigdy nie zapisuje MAP. Opcjonalnie zapisuje wyłącznie raport .json.
 Obrysy pisma GEO-MAP pozostają szacowane.
 """
 import argparse
+import hashlib
 from collections import Counter
 import json
 from pathlib import Path
@@ -216,6 +217,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         indeks=indeks_przeciec)
     return {
         "plik_wejsciowy": str(path),
+        "sha256_zrodla": hashlib.sha256(mapa["raw"]).hexdigest(),
         "skala": scale, "wysokosc_mm": wysokosc_mm,
         "liczba_napisow": len(przed), "liczba_poligonow": len(obiekty),
         "liczba_fragmentow_granic": len(wszystkie),
