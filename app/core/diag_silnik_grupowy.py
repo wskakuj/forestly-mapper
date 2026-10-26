@@ -91,7 +91,12 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
     przed, ostrzezenia = dm.elementy_z_mapy(mapa, scale, wysokosc_mm)
     obiekty = uk.wszystkie_poligony(mapa)
-    wszystkie = [o["punkty"] for o in obiekty]
+    # Każdy obiekt ma geometrię linii; obrys zamknięty tylko wtedy,
+    # gdy GEO-MAP jawnie kończy go punktem początkowym. Nie domykaj
+    # otwartych *4214 (to tworzyło nieistniejącą granicę przez 3h).
+    wszystkie = [{"punkty": o["punkty"],
+                  "zamkniety": o["punkty"][0] == o["punkty"][-1]}
+                 for o in obiekty]
     wielokonturowe = _wykryj_wiele_konturow(obiekty, mapa["lines"])
     nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
              if e["rodzaj"] == "litera"}
