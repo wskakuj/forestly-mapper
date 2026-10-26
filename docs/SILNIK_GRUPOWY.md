@@ -32,8 +32,25 @@ py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --jso
 położeń w pamięci. Do pliku zapisuje wyłącznie raport `.json`; odmawia
 użycia pliku `.MAP` jako celu raportu. Raport zawiera statystyki problemów
 sprzed i po symulacji, listę nowych pozycji oraz nierozwiązane kolizje.
-Dla dużej mapy przeszukiwanie może być długie. Nie są dostępne jeszcze wyniki
-porównania z ręcznie ułożonym wzorcem.
+
+**Bezpieczny profil startowy:** domyślnie rozpatrywane jest do 8 skupisk
+(`--limit-grup 8`), `--wiazka 8`, `--maks-grupa 3`,
+`--przebiegi 1`. Terminal pokazuje bieżący krok przed obliczeniami,
+nie dopiero po ukończeniu całej mapy. Raport ma pola
+`analiza_czesciowa`, `raport_silnika.rozpatrzone_grupy` i
+`raport_silnika.pominiete_przez_limit`. Przy częściowej analizie
+statystyki `po` obejmują całą mapę po modyfikacji tylko części grup,
+nie są wynikiem pełnej optymalizacji.
+
+Jeszcze mniejsza próbka dla dużej mapy:
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --limit-grup 2 --maks-grupa 2 --wiazka 4 --przebiegi 1 --json "byslaw_silnik_grupowy_probe.json"
+```
+
+Dopiero gdy próbka zadziała poprawnie, można zwiększać limit.
+`--limit-grup 0` wyłącza ograniczenie (może być kosztowne).
+Nie są dostępne jeszcze wyniki porównania z ręcznie ułożonym wzorcem.
 
 ## Ograniczenia i kolejne etapy
 
