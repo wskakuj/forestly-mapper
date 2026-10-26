@@ -99,6 +99,25 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(after[0]['wysiegnik'][1],after[1]['wysiegnik'][1])
         self.assertEqual(geo.waliduj_uklad(after), [])
 
+    def test_targeted_scan_preserves_other_conflicting_groups(self):
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(250,0),(350,0),(350,100),(250,100)]
+        items = [
+            item('a:L2','litera',(20,20,30,30),pa),
+            item('a:L3','opis',(20,20,40,40),pa),
+            item('b:L2','litera',(270,20,280,30),pb),
+            item('b:L3','opis',(270,20,290,40),pb),
+        ]
+        actual, report = engine.optymalizuj(
+            items, wszystkie_poligony=[pa,pb], maks_grupa=1,
+            wybrane_wydzielenia={'b'})
+        self.assertEqual(actual[0]['prostokat'],items[0]['prostokat'])
+        self.assertEqual(actual[1]['prostokat'],items[1]['prostokat'])
+        self.assertFalse(geo.prostokaty_koliduja(
+            actual[2]['prostokat'],actual[3]['prostokat']))
+        self.assertGreaterEqual(report['pominiete_przez_wybor'],1)
+        self.assertTrue(report['analiza_czesciowa'])
+
     def test_progress_callback_and_partial_scan(self):
         pa = [(0,0),(100,0),(100,100),(0,100)]
         pb = [(200,0),(300,0),(300,100),(200,100)]
