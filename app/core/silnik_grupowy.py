@@ -282,14 +282,28 @@ def _koszt(wariant, oryginaly):
     return score
 
 
+def _rozlozone(probki, ile):
+    """Równomiernie reprezentuj cały porządek kandydatów, nie tylko początek."""
+    if len(probki) <= ile:
+        return probki
+    if ile <= 1:
+        return probki[:ile]
+    indexes = sorted({round(i * (len(probki) - 1) / (ile - 1))
+                      for i in range(ile)})
+    return [probki[i] for i in indexes]
+
+
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                       odstep=2.5, limit=24):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
     grupa = sorted(grupa, key=lambda e: e["id"])
     inside = {e["id"]: list(_pozycje_wewnatrz(e, granice, margines)) for e in grupa}
+    rozszerzone = limit > 24
     outside = {e["id"]: list(_pozycje_zewnetrzne(
-        e, granice, poligony, margines)) for e in grupa}
-    anchors = list(_cele(grupa[0]["poligon"]))
+        e, granice, poligony, margines,
+        limit=(96 if rozszerzone else 48))) for e in grupa}
+    anchors = list(_cele(grupa[0]["poligon"],
+                         n=(9 if rozszerzone else 7)))
     all_options = []
     if len(grupa) > 2:
         return []
@@ -341,8 +355,12 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                         for c in sorted(
                                 anchors, key=lambda p: math.dist(p, srodek(ro)))[:7]:
                             add([(e, ri, False), (f, ro, True)], c)
-        for ra in outside[a["id"]][:10]:
-            for rb in outside[b["id"]][:10]:
+        lit_a = (_rozlozone(outside[a["id"]], 20) if rozszerzone
+                 else outside[a["id"]][:10])
+        lit_b = (_rozlozone(outside[b["id"]], 20) if rozszerzone
+                 else outside[b["id"]][:10])
+        for ra in lit_a:
+            for rb in lit_b:
                 if geo.prostokaty_koliduja(powieksz(ra, odstep / 2),
                                            powieksz(rb, odstep / 2)):
                     continue
@@ -377,7 +395,25 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         if abs(cx - ox) >= abs(cy - oy):
             return (kind, "prawo" if cx >= ox else "lewo")
         return (kind, "gora" if cy >= oy else "dol")
-    groups = sorted({rodzina(entry) for entry in ordered})
+    def rodzina_rozszerzona(entry):
+        # Przy większym limicie nie wystarczy rozróżniać strony opisu.
+        # Zewnętrzna litera może potrzebować innej strony poligonu.
+        base = rodzina(entry)
+        if not rozszerzone:
+            return base
+        plan = entry[1][2]
+        letter = next((e for e in plan if e["rodzaj"] == "litera"
+                       and e.get("wysiegnik")), None)
+        if letter is None:
+            return base + ("litera_wewnatrz",)
+        cx, cy = srodek(letter["prostokat"])
+        ox, oy = srodek(bbox(letter["poligon"]))
+        if abs(cx - ox) >= abs(cy - oy):
+            side = "prawo" if cx >= ox else "lewo"
+        else:
+            side = "gora" if cy >= oy else "dol"
+        return base + (side,)
+    groups = sorted({rodzina_rozszerzona(entry) for entry in ordered})
     if not groups:
         return []
     # Rezerwuj udzial dla kazdej wykrytej strategii, niezaleznie od jej
@@ -389,7 +425,7 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         selected = 0
         for key, (cost, family, plan) in ordered:
             if (family != kind[0] or
-                    rodzina((key, (cost, family, plan))) != kind or
+                    rodzina_rozszerzona((key, (cost, family, plan))) != kind or
                     key in used):
                 continue
             picked.append(plan)
