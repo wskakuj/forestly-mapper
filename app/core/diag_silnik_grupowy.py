@@ -13,6 +13,7 @@ from app.core import diagnostyka_map as dm
 from app.core import kontury_map as km
 from app.core import przeciecia_map as pm
 from app.core import autouklad_calej_mapy as auto
+from app.core import eksport_propozycji_map as export
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
 from app.core import silnik_grupowy as engine
@@ -285,6 +286,7 @@ def main(argv=None):
     p.add_argument("--sprawdz-warianty", action="store_true",
                    help="Policz odrzucone warianty (wymaga --etykiety)")
     p.add_argument("--json", help="Zapisz raport w osobnym pliku .json")
+    p.add_argument("--map-kopia",help="Stworz osobna, weryfikowana i NIGDY nienadpisywana testowa kopie .MAP (tylko z --cala-mapa)")
     args = p.parse_args(argv)
     if args.json:
         output = Path(args.json)
@@ -299,6 +301,14 @@ def main(argv=None):
         p.error("--limit-grup nie moze byc ujemny")
     if args.kara_przeciecia < 0:
         p.error('--kara-przeciecia nie moze byc ujemna')
+    if args.map_kopia and not args.cala_mapa:
+        p.error('--map-kopia wymaga --cala-mapa')
+    if args.map_kopia:
+        dest=Path(args.map_kopia)
+        if dest.suffix.lower()!='.map':
+            p.error('--map-kopia wymaga pliku .MAP')
+        if dest.resolve()==Path(args.mapa).resolve() or dest.exists():
+            p.error('Kopia juz istnieje albo wskazano oryginal; podaj NOWA nazwe')
     if args.maks_trudnych < 0 or args.rundy_dodatkowe < 0:
         p.error('--maks-trudnych i --rundy-dodatkowe nie moga byc ujemne')
     if args.cala_mapa and args.etykiety:
@@ -376,6 +386,15 @@ def main(argv=None):
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print("Raport:", output)
+    if args.map_kopia:
+        try:
+            saved=export.eksportuj_kopie(args.mapa,result,args.map_kopia)
+        except (ValueError,OSError,KeyError,IndexError) as exc:
+            p.error('Kopia MAP nie zostala zapisana: '+str(exc))
+        print("TESTOWA KOPIA GEO-MAP:",saved["sciezka_kopii"])
+        print("Weryfikacja odczytu: %d napisow; zapisano %d zmian" % (
+            saved["napisy_po_odczycie"],saved["zapisane_napisy"]))
+        print("UWAGA: kopia wymaga osobnej weryfikacji w GEO-MAP!")
     return 0
 
 
