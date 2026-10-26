@@ -165,8 +165,12 @@ def _pozycje_zewnetrzne(e, granice, poligony, margines,
         padded = powieksz(r, margines)
         if granice.przecina(padded):
             continue
-        # Zewnętrzne napisy nie mogą leżeć wewnątrz obcego wydzielenia.
-        if any(geo.punkt_w_poligonie(p, pts) for pts in poligony):
+        # Zewnętrzny napis musi pozostawać poza WŁASNYM wydzieleniem.
+        # Wolne wnętrze obcego poligonu jest dopuszczalne, o ile prostokąt
+        # nie przecina żadnej granicy ani innych etykiet. Stary zakaz
+        # dowolnego obcego wnętrza usuwał wszystkie warianty np. w gęstych
+        # skupiskach przy wspólnych granicach.
+        if geo.punkt_w_poligonie(p, poly):
             continue
         yield r
         limit -= 1
