@@ -237,7 +237,12 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         plan = [_wariant(e, r, target if external else None)
                 for e, r, external in boxes]
         if _poprawne(plan, odstep):
-            all_options.append(plan)
+            # Klasy wariantow musza zachowac reprezentacje w ograniczonej
+            # wiazce: bez tego najlepsze 24 pozycje czesto byly tylko
+            # wewnetrzne, mimo ze bezpieczny wysiegnik byl mozliwy.
+            kinds = tuple(sorted(
+                e["rodzaj"] for e in plan if e.get("wysiegnik") is not None))
+            all_options.append((kinds, plan))
 
     if len(grupa) == 1:
         e = grupa[0]
@@ -267,14 +272,40 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
 
     unique = {}
     original = {e["id"]: e for e in grupa}
-    for plan in all_options:
+    for kind, plan in all_options:
         key = tuple((e["id"], tuple(round(v, 2) for v in e["prostokat"]),
                      tuple(round(v, 2) for v in e["wysiegnik"][1])
                      if e["wysiegnik"] else None) for e in plan)
         score = _koszt(plan, original)
         if key not in unique or score < unique[key][0]:
-            unique[key] = (score, plan)
-    return [p for _, p in sorted(unique.values(), key=lambda sp: sp[0])[:limit]]
+            unique[key] = (score, kind, plan)
+    ordered = sorted(unique.items(), key=lambda item: (item[1][0], item[0]))
+    groups = sorted({entry[1][1] for entry in ordered})
+    if not groups:
+        return []
+    # Rezerwuj udzial dla kazdej wykrytej strategii, niezaleznie od jej
+    # ceny. W przeciwnym razie brakuje np. "litera wewnatrz, opis poza".
+    minimum = max(1, limit // len(groups))
+    picked = []
+    used = set()
+    for kind in groups:
+        selected = 0
+        for key, (cost, family, plan) in ordered:
+            if family != kind or key in used:
+                continue
+            picked.append(plan)
+            used.add(key)
+            selected += 1
+            if selected >= minimum or len(picked) >= limit:
+                break
+    # Reszte limitu przydziel wedlug kosztu, bez gubienia roznorodnosci.
+    for key, (_, family, plan) in ordered:
+        if len(picked) >= limit:
+            break
+        if key not in used:
+            picked.append(plan)
+            used.add(key)
+    return picked
 
 
 def _kolizja_miedzy(first, second, odstep):
