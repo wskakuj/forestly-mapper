@@ -79,6 +79,25 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(result["analiza_czesciowa"])
         self.assertGreaterEqual(result["pominiete_przez_limit"], 1)
 
+    def test_farther_move_is_always_more_expensive(self):
+        poly = [(0,0),(1000,0),(1000,1000),(0,1000)]
+        e = item('a:L3','opis',(0,0,10,20),poly)
+        original = {e['id']: e}
+        p1 = dict(e, prostokat=(130,0,140,20))
+        p2 = dict(e, prostokat=(260,0,270,20))
+        score1 = engine._koszt([p1], original)
+        score2 = engine._koszt([p2], original)
+        self.assertGreater(score2, score1)
+
+    def test_move_score_scales_with_label_size(self):
+        poly = [(0,0),(1000,0),(1000,1000),(0,1000)]
+        e = item('a:L3','opis',(0,0,10,20),poly)
+        moved = dict(e, prostokat=(130,0,140,20))
+        large = dict(e, prostokat=(0,0,100,200))
+        large_move = dict(large, prostokat=(1300,0,1400,200))
+        self.assertAlmostEqual(engine._koszt([moved],{e['id']:e}),
+                               engine._koszt([large_move], {e['id']:large}))
+
     def test_deterministic(self):
         poly = [(0,0),(90,0),(90,90),(0,90)]
         items = [item('a:L2','litera',(20,20,32,32),poly),
