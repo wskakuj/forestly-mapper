@@ -145,6 +145,9 @@ class ReadOnlyMapTests(unittest.TestCase):
             self.assertIn("wewnetrzne", data[0]["kandydaci"]["litera"])
             self.assertIn("zewnetrzne", data[0]["kandydaci"]["opis"])
             self.assertIn("plany_bez_kolizji_z_innymi_etykietami", data[0])
+            self.assertIn("minimalna_liczba_blokujacych_grup", data[0])
+            self.assertIn("najczestsze_blokady", data[0])
+            self.assertIn("przykladowe_minimalne_zestawy_blokad", data[0])
             self.assertEqual(original, src.read_bytes())
 
     def test_rejects_map_as_report_target(self):
