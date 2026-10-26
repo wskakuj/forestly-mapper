@@ -74,6 +74,46 @@ class ReadOnlyMapTests(unittest.TestCase):
         self.assertEqual(warnings[0]["id"], "MULTI")
         self.assertEqual(warnings[0]["liczba_sekcji_p0"], 2)
 
+    def test_real_contours_integration_not_raw_p0_count(self):
+        from app.core import diagnostyka_map as dm
+        from app.core import geometria_ukladu as geo
+        with TemporaryDirectory() as root:
+            src = Path(root) / "multiring.MAP"
+            lines = [
+                ";# Plik danych systemu GEO-MAP",
+                ";# EXT 4000 0 0 220 100",
+                "*5310 255 24 0", ":ID[MULTI]", ":A1[4a]",
+                ":A2[SO45|0.12]",
+                "L 2 0 0 0 1 5", "L 3 0 0 0 1 5",
+                "P 1 0 0", "P 1 80 0", "P 1 80 80", "P 1 0 80",
+                "P 0 0 0",
+                "P 1 140 0", "P 1 220 0", "P 1 220 80", "P 1 140 80",
+                "P 0 140 0",
+                "P 0 0 0", "",
+            ]
+            src.write_bytes(onm.tekst_na_maz("\r\n".join(lines)))
+            original = src.read_bytes()
+            elements, warnings = dm.elementy_z_mapy(
+                onm.wczytaj_mape(src), 4000)
+            self.assertFalse(warnings)
+            self.assertEqual(len(elements), 2)
+            poly = elements[0]["poligon"]
+            self.assertEqual(len(poly["kontury"]), 2)
+            self.assertTrue(geo.punkt_w_poligonie((40,40), poly))
+            self.assertTrue(geo.punkt_w_poligonie((180,40), poly))
+            self.assertFalse(geo.punkt_w_poligonie((110,40), poly))
+            report = diag.diagnozuj(
+                src, skala=4000, etykiety=["4a"], maks_grupa=1)
+            self.assertEqual(report["liczba_poligonow"], 1)
+            self.assertEqual(report["liczba_fragmentow_granic"], 2)
+            self.assertEqual(
+                report["wydzielenia_wielokonturowe"][0]["liczba_sekcji_p0"],3)
+            self.assertEqual(
+                report["wydzielenia_wielokonturowe"][0]["liczba_konturow"],2)
+            self.assertEqual(report["wielokonturowe_w_modelu"], ["4a"])
+            self.assertFalse(report["pelna_walidacja_topologii"])
+            self.assertEqual(original, src.read_bytes())
+
     def test_open_line_does_not_block_inside_candidate(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
