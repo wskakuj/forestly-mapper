@@ -54,6 +54,44 @@ class ReadOnlyMapTests(unittest.TestCase):
         self.assertEqual(diag._przeciecia_wysiegnikow_z_obiektami(
             src,objects,lines,{"B"}),[])
 
+    def test_soft_crossing_penalty_not_double_counting_duplicate_layers(self):
+        from app.core import przeciecia_map as pm
+        blocks = [
+            ["*5310 255 24 0", ":ID[A]", "P 1 0 0",
+             "P 1 20 0", "P 1 20 20", "P 1 0 20", "P 0 0 0"],
+            ["*5214 5 1 0", ":ID[B]", "P 1 -10 5", "P 1 -10 15"],
+            ["*5216 5 1 0", ":ID[C]", "P 1 -10 5", "P 1 -10 15"],
+        ]
+        lines, objs = [], []
+        for block in blocks:
+            objs.append({"start":len(lines),"linie":block})
+            lines.extend(block)
+        index = pm.IndeksPrzeciec(objs,lines)
+        one = {"id":"A:L2","wydzielenie":"A",
+               "wysiegnik":((-20,10),(10,10))}
+        self.assertEqual(index.kara_planu([one],20),20)
+        self.assertEqual(index.kara_planu([one,one],20),40)
+        crossing = index.raport(one["wysiegnik"],"A")
+        self.assertEqual(crossing["liczba_dodatkowych_przeciec"],1)
+        self.assertEqual(crossing["liczba_punktow_przeciec"],2)
+        own_only = dict(one,wysiegnik=((-5,10),(10,10)))
+        self.assertEqual(index.kara_planu([own_only],20),0)
+        with self.assertRaises(ValueError):
+            index.kara_planu([one],-10)
+
+    def test_optional_penalty_report_does_not_modify_map(self):
+        with TemporaryDirectory() as root:
+            src = Path(root) / "input.MAP"
+            self.sample(src)
+            original = src.read_bytes()
+            result = diag.diagnozuj(
+                src,skala=4000,etykiety=["a"],kara_przeciecia=20.0)
+            self.assertEqual(result["kara_za_przeciecie"],20.0)
+            self.assertGreaterEqual(result["koszt_kary_wybranego_ukladu"],0)
+            self.assertEqual(original,src.read_bytes())
+            with self.assertRaisesRegex(ValueError,"ujemna"):
+                diag.diagnozuj(src,skala=4000,kara_przeciecia=-2)
+
     def test_diagnostics_never_writes_source_map(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
