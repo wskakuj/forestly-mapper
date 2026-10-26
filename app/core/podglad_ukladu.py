@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 
 from app.core import diagnostyka_map as dm
+from app.core import kontury_map as km
 from app.core import opisy_na_mape as onm
 
 
@@ -28,26 +29,9 @@ def _fmt(value):
 
 
 def _kontury(lines):
-    """P 0 jawnie kończy kontur; nigdy nie dopinamy otwartej polilinii."""
-    contours, points = [], []
-    for line in lines:
-        if not line.startswith("P "):
-            continue
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        try:
-            point = (float(parts[2]), float(parts[3]))
-        except ValueError:
-            continue
-        points.append(point)
-        if parts[1] == "0":
-            if len(points) >= 2:
-                contours.append((points, True))
-            points = []
-    if len(points) >= 2:
-        contours.append((points, False))
-    return contours
+    """Jeden parser dla SVG i silnika; bez pustych P 0 i fałszywych linii."""
+    return [(fragment["punkty"], fragment["zamkniety"])
+            for fragment in km.fragmenty_z_linii(lines)]
 
 
 def _obiekty_liniowe(mapa):
@@ -118,7 +102,12 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
 
     focus = []
     for e in targets:
-        focus.extend(e["poligon"])
+        # Poligon jedno- lub wielokonturowy; nie iteruj po kluczach
+        # slownika {"kontury": ...} jak po punktach (blad SVG dla 4a/4c).
+        focus.extend(p for ring in
+                     (e["poligon"]["kontury"] if isinstance(e["poligon"], dict)
+                      else [e["poligon"]])
+                     for p in ring)
         for rect in (e["prostokat"], po[e["id"]]["prostokat"]):
             focus.extend(((rect[0], rect[1]), (rect[2], rect[3])))
         for leader in (e.get("wysiegnik"), po[e["id"]].get("wysiegnik")):
