@@ -487,6 +487,69 @@ def _sasiedztwo(grupy, klucz, ile=5):
     return [klucz] + [x[3] for x in sorted(pozycje)[:max(0, ile - 1)]]
 
 
+
+def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
+    """Znajdź najtańszy bezkolizyjny układ z ograniczonych list kandydatów.
+
+    Pełny przegląd kombinacji <=3 małych grup (zwykle 24^3) usuwa
+    efekt obcinania dobrych częściowych planów przez wiązkę. Otoczenie
+    pozostaje nieruchome. Brak wyniku dotyczy TYLKO tego zbioru planów,
+    nie dowodzi braku możliwego rozmieszczenia.
+    """
+    keys = tuple(sorted(klucze, key=str))
+    if not 2 <= len(keys) <= 3:
+        raise ValueError("Dokładna wspólna próba wymaga 2–3 wydzieleń")
+    fixed = [(e, _obwiednia_elementu(e, odstep))
+             for e in obecne.values() if e["wydzielenie"] not in keys]
+    valid = []
+    counts = {}
+    for key in keys:
+        available = []
+        for plan in warianty(key):
+            bounds = _obwiednia_planu(plan, odstep)
+            if any(_obwiednie_nachodza(bounds, b)
+                   and _kolizja_miedzy(plan, [e], odstep)
+                   for e, b in fixed):
+                continue
+            available.append((_koszt(plan, oryginaly), plan, bounds))
+        available.sort(key=lambda x: (x[0],
+                        tuple((e["id"], e["prostokat"]) for e in x[1])))
+        counts[str(key)] = len(available)
+        if not available:
+            return None, {"sukces": False, "liczba_planow_po_otoczeniu": counts,
+                          "ocenione_kompletne_uklady": 0}
+        valid.append((key, available))
+    valid.sort(key=lambda pair: (len(pair[1]), str(pair[0])))
+    remaining = [0.0] * (len(valid) + 1)
+    for i in range(len(valid) - 1, -1, -1):
+        remaining[i] = remaining[i + 1] + valid[i][1][0][0]
+    best, best_cost = None, math.inf
+    checked = 0
+
+    def visit(i, selected, bounds, score):
+        nonlocal best, best_cost, checked
+        if score + remaining[i] >= best_cost:
+            return
+        if i == len(valid):
+            checked += 1
+            best, best_cost = list(selected), score
+            return
+        for cost, plan, area in valid[i][1]:
+            if score + cost + remaining[i + 1] >= best_cost:
+                break
+            if any(_obwiednie_nachodza(area, b) and
+                   _kolizja_miedzy(plan, prev, odstep)
+                   for prev, b in bounds):
+                continue
+            visit(i + 1, selected + plan, bounds + [(plan, area)],
+                  score + cost)
+
+    visit(0, [], [], 0.0)
+    return best, {"sukces": best is not None,
+                  "liczba_planow_po_otoczeniu": counts,
+                  "ocenione_kompletne_uklady": checked}
+
+
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 szerokosc_wiazki=24, maks_grupa=5, przebiegi=2,
                 limit_grup=None, postep=None,
@@ -530,6 +593,23 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
     rozpatrzone = 0
     pominiete_przez_limit = 0
     pominiete_przez_wybor = set()
+    wspolna_proba = None
+    # Dla małego jawnie wskazanego skupiska spróbuj rozwiązać wszystkie
+    # wydzielenia jednocześnie, ZANIM najłatwiejsze zajmą wolną przestrzeń.
+    # Nie zmienia to trybu pełnej mapy ani ograniczenia liczby grup.
+    if (wybrane is not None and 2 <= len(wybrane) <= min(3, maks_grupa)
+            and all(k in by_group for k in wybrane)
+            and (limit_grup is None or limit_grup >= len(wybrane))):
+        if any(set(issue["elementy"]) &
+               {e["id"] for e in elementy if e["wydzielenie"] in wybrane}
+               for issue in przed):
+            selected, wspolna_proba = _wspolny_plan_dokladny(
+                wybrane, warianty, obecne, old, odstep)
+            wspolna_proba["liczba_wydzielen"] = len(wybrane)
+            if selected:
+                for e in selected:
+                    obecne[e["id"]] = e
+                wykonane += 1
     for przebieg in range(max(1, przebiegi)):
         problems = issues()
         touched = {ident for problem in problems for ident in problem["elementy"]}
@@ -661,6 +741,7 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
         "przed": dict(_counts(przed)), "po": dict(_counts(po)),
         "przesuniete": changed, "udane_grupy": wykonane,
         "rozpatrzone_grupy": rozpatrzone,
+        "wspolna_proba": wspolna_proba,
         "pominiete_przez_limit": pominiete_przez_limit,
         "pominiete_przez_wybor": len(pominiete_przez_wybor),
         "analiza_czesciowa": (pominiete_przez_limit > 0
