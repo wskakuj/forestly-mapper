@@ -182,15 +182,30 @@ def podglad_svg(mapa_path, raport_path, nazwy, *, kontekst=40, szerokosc=1200,
                        f'fill="{fill}" fill-opacity="{opacity}" '
                        f'stroke="{stroke}" stroke-width="{2 if chosen else .7}"/>')
             if chosen:
-                label = html.escape(e.get("tekst", ""))
+                # GEO-MAP A2 zawiera linie oddzielone '|'. Tekst w
+                # jednym wierszu nachodził na obrysy i był nieczytelny.
+                # SVG jest poglądowe, lecz każda linia musi być czytelna
+                # we własnym prostokącie (bez udawania fontów GEO-MAP).
+                full = e.get("tekst", "")
+                lines = full.split("|") if e["rodzaj"] == "opis" else [full]
                 cx, cy = project(((rect[0] + rect[2]) / 2,
                                   (rect[1] + rect[3]) / 2), panel)
-                out.append(f'<text x="{_fmt(cx)}" y="{_fmt(cy)}" '
+                font = (13.0 if e["rodzaj"] == "litera" else
+                        min(13.0, max(9.0, rh / (len(lines) + .65) * .87)))
+                advance = font * 1.28
+                baseline = cy - (len(lines) - 1) * advance / 2 + font * .35
+                spans = "".join(
+                    f'<tspan x="{_fmt(cx)}" '
+                    f'y="{_fmt(baseline + i * advance)}">'
+                    f'{html.escape(line)}</tspan>'
+                    for i, line in enumerate(lines))
+                out.append(f'<text x="{_fmt(cx)}" '
+                           f'data-full-text="{html.escape(full, quote=True)}" '
                            f'fill="#111827" text-anchor="middle" '
-                           f'font-size="{13 if e["rodzaj"] == "litera" else 11}" '
+                           f'font-size="{_fmt(font)}" '
                            f'font-weight="700" '
                            f'font-family="Arial,sans-serif" paint-order="stroke" '
-                           f'stroke="#ffffff" stroke-width="1">{label}</text>')
+                           f'stroke="#ffffff" stroke-width=".65">{spans}</text>')
             leader = e.get("wysiegnik")
             if leader:
                 (ax, ay), (bx, by) = project(leader[0], panel), project(leader[1], panel)
