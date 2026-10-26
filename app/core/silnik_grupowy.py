@@ -271,17 +271,28 @@ def _kolizja_miedzy(first, second, odstep):
 
 
 def _sasiedztwo(grupy, klucz, ile=5):
-    a = bbox(grupy[klucz][0]["poligon"])
+    """Wybieraj grupy faktycznie bliskie geometrycznie, w skali etykiet.
+
+    Kryterium uwzględnia również napisy już wypchnięte poza swoje poligony.
+    Nie używa stałego promienia w metrach zależnego od konkretnej mapy.
+    """
+    own = grupy[klucz]
+    a = bbox(own[0]["poligon"])
     pozycje = []
     for other, items in grupy.items():
         if other == klucz:
             continue
         b = bbox(items[0]["poligon"])
         sep = odleglosc_boxow(a, b)
-        la = min(odleglosc_boxow(e["prostokat"], a) for e in items)
-        if sep <= 25 or la <= 50:
-            pozycje.append((sep, str(other), other))
-    return [klucz] + [x[2] for x in sorted(pozycje)[:ile - 1]]
+        labels_sep = min(odleglosc_boxow(e["prostokat"], f["prostokat"])
+                         for e in own for f in items)
+        rozmiar = max(
+            max(e["prostokat"][2] - e["prostokat"][0],
+                e["prostokat"][3] - e["prostokat"][1])
+            for e in own + items)
+        if min(sep, labels_sep) <= 3 * rozmiar:
+            pozycje.append((min(sep, labels_sep), sep, str(other), other))
+    return [klucz] + [x[3] for x in sorted(pozycje)[:max(0, ile - 1)]]
 
 
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
