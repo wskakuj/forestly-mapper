@@ -55,6 +55,14 @@ class PreviewTests(unittest.TestCase):
             self.assertEqual(before_map, src.read_bytes())
             self.assertEqual(before_json, report.read_bytes())
 
+    def test_preview_reports_unresolved_label_overlaps(self):
+        with TemporaryDirectory() as d:
+            source = self.source(d, letter="4a")
+            report = self.report(d, source)
+            svg = preview.podglad_svg(source, report, ["4a"])
+            self.assertIn("NIEROZWIAZANE: 4a", svg)
+            self.assertIn('font-weight="700"', svg)
+
     def test_includes_two_point_map_lines(self):
         source = {"lines": [
             "*5310 1 2 3", "P 1 0 0", "P 1 10 0", "P 0 0 0",
@@ -107,6 +115,9 @@ class PreviewTests(unittest.TestCase):
                                            ["4a", "4b", "4c"])
             self.assertIn("4a / 4b / 4c", rendered)
             self.assertIn("SO40|0.1", rendered)
+            # Widać, czy pozostały nienaprawione kolizje; sam napis
+            # "PO" nie może sugerować, że wszystkie etykiety poprawiono.
+            self.assertIn("NIEROZWIAZANE:", rendered)
             self.assertGreaterEqual(rendered.count("<path "), 10)
             self.assertNotIn("nan", rendered.lower())
             self.assertEqual(original, source.read_bytes())
