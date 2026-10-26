@@ -55,6 +55,17 @@ class PreviewTests(unittest.TestCase):
             self.assertEqual(before_map, src.read_bytes())
             self.assertEqual(before_json, report.read_bytes())
 
+    def test_multiline_description_readable_and_preserves_full_text(self):
+        with TemporaryDirectory() as d:
+            src = self.source(d)
+            report = self.report(d,src)
+            svg = preview.podglad_svg(src,report,["3h"])
+            self.assertIn('data-full-text="SO45|0.22"',svg)
+            self.assertIn(">SO45</tspan>",svg)
+            self.assertIn(">0.22</tspan>",svg)
+            self.assertNotIn(">SO45|0.22</text>",svg)
+            self.assertGreaterEqual(svg.count("<tspan "),4)
+
     def test_preview_reports_unresolved_label_overlaps(self):
         with TemporaryDirectory() as d:
             source = self.source(d, letter="4a")
