@@ -41,6 +41,24 @@ class EngineTests(unittest.TestCase):
         self.assertLessEqual(len(plans),24)
         self.assertTrue(all(geo.waliduj_uklad(p) == [] for p in plans))
 
+    def test_open_polyline_does_not_create_phantom_polygon_border(self):
+        """An open path outside a parcel must not close diagonally over it."""
+        parcel = [(-30,-30),(30,-30),(30,30),(-30,30)]
+        open_line = [(-100,100),(-100,-100),(100,-100)]
+        candidate = (-10,-10,10,10)
+        actual_edges = engine.Granice([
+            {"punkty": parcel, "zamkniety": True},
+            {"punkty": open_line, "zamkniety": False},
+        ])
+        self.assertFalse(actual_edges.przecina(candidate))
+        # The old implementation always closed the path and invented
+        # a 200-m diagonal through the label.
+        wrong_edges = engine.Granice([parcel, open_line])
+        self.assertTrue(wrong_edges.przecina(candidate))
+        label = item('test:L2','litera',candidate,parcel)
+        places = list(engine._pozycje_wewnatrz(label,actual_edges,2.5))
+        self.assertTrue(places)
+
     def test_exterior_label_may_occupy_clear_interior_of_neighbor(self):
         """No border intersection; neighboring polygon interior is not forbidden."""
         own = [(0,0),(18,0),(18,18),(0,18)]
