@@ -786,3 +786,53 @@ Test kontrolny bez zapisywania oryginału:
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_cele_v12.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_cele_v12.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_cele_v12.svg"
 \`\`\`
+
+
+## Etap V13 — ochrona wariantów bez dodatkowych przecięć
+
+Rzeczywisty test \`byslaw_4abc_cele_v12.json\` potwierdził:
+- pełna wspólna optymalizacja \`4a/4b/4c\` daje 6 przesuniętych
+  napisów, bez modelowanych konfliktów wewnątrz tej grupy;
+- globalna liczba zgłoszeń pozostaje \`280→265\`;
+- 2 dodatkowe przecięcia obcych linii (\`*5214/*5216\`)
+  i 0 nadmiarowych przecięć własnych granic;
+- wysięgniki \`4a\` skróciły się do ~57,4 m (litera)
+  oraz ~65,6 m (opis), ale **oba obce przecięcia pozostały**;
+- przebieg 72 kandydatów wybrano spośród trzech prób
+  (24, 72, 112). Trzecia próba nie obniżyła kosztu.
+  \`pelna_walidacja_topologii=false\`.
+
+Analiza kodu ujawniła, że w limicie 72/112 reprezentacja
+kandydatów była zapewniana według strategii i kierunku
+(litera/opis oraz lewo/prawo/góra/dół), ale **nie ze względu
+na koszt przecinania geometrii źródłowej**. Rzadki plan
+z zerową karą GIS mógł zostać odrzucony, zanim
+dokładny solver uzyskał szansę połączenia go z \`4b\`
+i \`4c\`. Brak takiego planu w raporcie nie był więc
+dowodem, że wygenerowane pozycje nie dawały czystej trasy.
+
+W V13 przy włączonym \`--kara-przeciecia\` albo
+\`--kara-wielokrotnej-granicy\` każda rozszerzona
+rodzina kandydatów jest dodatkowo podzielona na:
+- \`bez_kary_map\` — brak obu rodzajów dodatkowych przecięć;
+- \`z_kara_map\` — co najmniej jedno ostrzeżenie w ramach
+  aktualnych wag kar.
+
+W ograniczonej puli zabezpieczane są reprezentanci
+**obu** podgrup, jeśli istnieją. Koszt w dalszym ciągu
+decyduje o wyborze spośród zgodnych pełnych planów.
+Nie gwarantuje to układu z zerem przecięć: grupy
+mogą być wzajemnie niezgodne, nawet jeśli pojedyncze
+plany są czyste. Wyniki trzeba sprawdzić na rzeczywistej
+mapie i w GEO-MAP. Klasyfikację planów obliczamy
+raz na plan, aby nie mnożyć kosztownych zapytań
+do indeksu geometrii.
+
+Bez aktywnych dodatkowych kar zachowujemy klasyczną
+selekcję według kierunku. Źródłowe MAP, INI
+i \`main\` pozostają niezmienione.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_czyste_warianty_v13.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_czyste_warianty_v13.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_czyste_warianty_v13.svg"
+\`\`\`
