@@ -38,10 +38,27 @@ def odleglosc_boxow(a, b):
 
 
 def krawedzie(poligony):
-    """Deduplicacja krawędzi bez założenia orientacji wielokąta."""
+    """Prawdziwe krawędzie, bez fikcyjnego domykania otwartych polilinii.
+
+    Parametr może zawierać dawne listy wierzchołków (traktowane jako
+    poligony), lub obiekty {"punkty": ..., "zamkniety": bool}. Wartość
+    False jest istotna dla otwartych obiektów GEO-MAP *4214 i podobnych.
+    Nie wolno dodawać do nich odcinka ostatni -> pierwszy.
+    """
     seen = set()
-    for pts in poligony:
-        for a, b in zip(pts, pts[1:] + pts[:1]):
+    for item in poligony:
+        if isinstance(item, dict):
+            pts = item["punkty"]
+            zamkniety = item["zamkniety"]
+        else:
+            pts = item
+            zamkniety = True  # zgodność dla istniejących wywołań polygonowych
+        if len(pts) < 2:
+            continue
+        edges = list(zip(pts, pts[1:]))
+        if zamkniety and pts[-1] != pts[0]:
+            edges.append((pts[-1], pts[0]))
+        for a, b in edges:
             if a == b:
                 continue
             key = tuple(sorted((tuple(a), tuple(b))))
