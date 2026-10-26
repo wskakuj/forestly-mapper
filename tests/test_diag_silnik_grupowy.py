@@ -74,6 +74,24 @@ class ReadOnlyMapTests(unittest.TestCase):
         self.assertEqual(warnings[0]["id"], "MULTI")
         self.assertEqual(warnings[0]["liczba_sekcji_p0"], 2)
 
+    def test_open_line_does_not_block_inside_candidate(self):
+        with TemporaryDirectory() as root:
+            src = Path(root) / "test.MAP"
+            self.sample(src)
+            source = src.read_bytes()
+            extension = ("\r\n*4214 16711680 22 0\r\n"
+                         ":ID[OPEN-PATH]\r\n"
+                         "P 1 -100 200\r\n"
+                         "P 1 -100 -100\r\n"
+                         "P 1 200 -100\r\n")
+            src.write_bytes(source + extension.encode("ascii"))
+            original = src.read_bytes()
+            report = diag.diagnozuj(
+                src, skala=4000, etykiety=["a"], sprawdz_warianty=True)
+            candidate_counts = report["diagnostyka_wariantow"][0]["kandydaci"]
+            self.assertGreater(candidate_counts["litera"]["wewnetrzne"], 0)
+            self.assertEqual(original, src.read_bytes())
+
     def test_candidate_debug_report_does_not_write_to_map(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
