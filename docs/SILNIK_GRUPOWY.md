@@ -298,3 +298,46 @@ Plik SVG pokazuje odcinek do obwodu litery, a nie do jej środka,
 oraz otaczające napisy. To **nie jest jeszcze dokładna wizualizacja
 czcionek GEO-MAP**. Starszy \`proba_ukladu_v3.py\` zostaje jako
 historyczny prototyp, nie jest źródłem docelowej reguły eksportu.
+
+## Etap 6 — model wielokonturowych wydzieleń (P 0)
+
+Nowy moduł `app/core/kontury_map.py` dzieli punktowe rekordy GEO-MAP
+według zamknięcia `P 0`. Nie scala rozłącznych pierścieni ani
+nie dopisuje krawędzi do otwartych polilinii. Osobny ostatni `P 0`,
+który występuje **po** zamknięciu wcześniejszych konturów,
+jest znacznikiem końca i **nie tworzy trzeciego pierścienia**.
+
+W źródłowej mapie BYSŁAW jest 11 wydzieleń z takim wzorcem;
+w szczególności `4a` i `4c` zawierają po **dwa rzeczywiste
+zamknięte kontury**, choć po trzy linie `P 0`.
+Znormalizowany model `poligon={"kontury":[...], "kompletne":true}`
+jest teraz przekazywany przez `diagnostyka_map`, funkcje geometrii,
+kandydatów i walidator. Zasada parzystości pierścieni:
+rozłączne obszary są traktowane jak unia, wewnętrzny pierścień
+jako dziura. Nie dopuszczamy prostokąta tekstu ponad segmentem
+żadnego pierścienia; cel wysięgnika ma leżeć we wnętrzu
+odpowiedniego wypełnionego obszaru.
+
+Diagnostyka raportuje oddzielnie `liczba_poligonow` (liczba
+obiektów wejściowych) i `liczba_fragmentow_granic` (faktyczne
+kontury i otwarte odcinki), a także dla danego A1
+`liczba_sekcji_p0` i `liczba_konturow`.
+`wielokonturowe_w_modelu` wskazuje wdrożone wielopierścieniowe
+wydzielenia. Dla mapy zawierającej wielokonturowe wydzielenia
+`pelna_walidacja_topologii` pozostaje **false**: algorytm oparty
+o parzystość potrzebuje jeszcze porównania z realnym
+renderowaniem dziur, przecięć i warstw GEO-MAP. To świadomy
+bezpiecznik przed pochopnym eksportem.
+
+Regresje syntetyczne obejmują dwa oddzielne obszary, końcowy
+samotny `P 0`, dziurę wewnętrzną, otwartą linię, generator
+napisów i cały odczyt MAP bez nadpisywania.
+
+Celowane sprawdzenie prawdziwej mapy bez eksportowania:
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 4 --wiazka 12 --przebiegi 1 --sprawdz-warianty --json "byslaw_4abc_kontury.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_kontury.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_kontury.svg"
+```
+
+Podgląd SVG zachowuje własne kontury już od poprzedniego etapu.
