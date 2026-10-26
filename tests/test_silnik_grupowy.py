@@ -236,6 +236,35 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(geo.prostokat_w_poligonie(r,model)
                             for r in found))
 
+    def test_multiring_targets_sample_individual_components(self):
+        small = [(0,0),(20,0),(20,20),(0,20),(0,0)]
+        distant = [(1000,0),(1020,0),(1020,20),(1000,20),(1000,0)]
+        poly = {"kontury":[small,distant],"kompletne":True}
+        base = list(engine._cele(poly,n=7))
+        extended = list(engine._cele(poly,n=9))
+        self.assertTrue(any(0 < x < 20 for x,y in extended))
+        self.assertTrue(any(1000 < x < 1020 for x,y in extended))
+        self.assertGreater(len(extended),len(base))
+        self.assertEqual(len(extended),len(set(extended)))
+        self.assertTrue(all(geo.punkt_w_poligonie(p,poly)
+                            for p in extended))
+
+    def test_weighted_target_sampling_keeps_farther_crossing_free_goal(self):
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        letter = item('a:L2','litera',(0,0,10,10),poly)
+        short=(10,5)
+        far=(70,5)
+        candidates=[short,far]
+        no_penalty=engine._cele_ocenione(
+            candidates,[(letter,letter["prostokat"])],None,limit=1)
+        self.assertEqual(no_penalty,[short])
+        def crossing_penalty(plan):
+            return 100.0 if plan[0]["wysiegnik"][1]==short else 0.0
+        optimized=engine._cele_ocenione(
+            candidates,[(letter,letter["prostokat"])],
+            crossing_penalty,limit=1)
+        self.assertEqual(optimized,[far])
+
     def test_multiring_exterior_positions_cover_both_local_contours(self):
         ring_a = [(0,0),(100,0),(100,100),(0,100),(0,0)]
         ring_b = [(900,0),(1000,0),(1000,100),(900,100),(900,0)]
