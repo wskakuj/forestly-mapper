@@ -51,6 +51,8 @@ class IndeksPrzeciec:
         if not wysiegnik:
             return {"liczba_punktow_przeciec": 0,
                     "liczba_dodatkowych_przeciec": 0,
+                    "liczba_przeciec_wlasnej_granicy": 0,
+                    "liczba_nadmiarowych_przeciec_wlasnej_granicy": 0,
                     "liczba_nakladajacych_sie_odcinkow": 0,
                     "punkty": [], "nakladanie": []}
         a, b = wysiegnik
@@ -84,10 +86,18 @@ class IndeksPrzeciec:
             if ident == owner and typ == "*5310":
                 row["wlasna_granica"] = True
         points = sorted(grouped.values(),key=lambda x:tuple(x["punkt"]))
+        own_crossings = sum(p["wlasna_granica"] for p in points)
+        # Wysięgnik z zewnątrz do własnego wydzielenia zazwyczaj
+        # przecina jego obrys dokładnie raz. Trzy przecięcia oznaczają
+        # wejście, wyjście i ponowne wejście do konturu lub do innej
+        # części wydzielenia — graficznie mylący przebieg prostej.
+        excess_own = max(0, own_crossings - 1)
         result = {
             "liczba_punktow_przeciec": len(points),
             "liczba_dodatkowych_przeciec": sum(
                 not p["wlasna_granica"] for p in points),
+            "liczba_przeciec_wlasnej_granicy": own_crossings,
+            "liczba_nadmiarowych_przeciec_wlasnej_granicy": excess_own,
             "liczba_nakladajacych_sie_odcinkow": len(overlaps),
             "punkty": [{"punkt":p["punkt"],
                         "typy_obiektow": sorted(p["typy"]),
@@ -102,9 +112,14 @@ class IndeksPrzeciec:
         self.cache[key] = result
         return result
 
-    def kara_planu(self, plan, za_punkt=25.0):
-        """Koszt MIĘKKI: nie zastępuje twardej walidacji geometrii."""
-        if za_punkt < 0:
+    def kara_planu(self, plan, za_punkt=25.0,
+                   za_nadmiarowe_wlasne=0.0):
+        """Miękkie koszty obcych i wielokrotnych własnych przecięć.
+
+        Jedno przecięcie granicy własnego wydzielenia jest normalne
+        i nie dostaje kary. Wartości zerowe zachowują starszy ranking.
+        """
+        if za_punkt < 0 or za_nadmiarowe_wlasne < 0:
             raise ValueError("Kara nie może być ujemna")
         total = 0.0
         for e in plan:
@@ -113,4 +128,6 @@ class IndeksPrzeciec:
                 total += za_punkt * (
                     entry["liczba_dodatkowych_przeciec"]
                     + entry["liczba_nakladajacych_sie_odcinkow"])
+                total += za_nadmiarowe_wlasne * (
+                    entry["liczba_nadmiarowych_przeciec_wlasnej_granicy"])
         return total
