@@ -57,6 +57,42 @@ class EngineTests(unittest.TestCase):
             and not geo.punkt_w_poligonie(engine.srodek(r),own)
             for r in candidates))
 
+    def test_exterior_sampler_reaches_narrow_offset_corridor(self):
+        """Pozycje pomiędzy starymi próbkami muszą być osiągalne.
+
+        Zakres i położenie są w jednostkach względnych etykiety; żaden
+        konkretny UUID ani współrzędne mapy BYSŁAW nie są zakodowane.
+        """
+        poly = [(0,0),(40,0),(40,40),(0,40)]
+        e = item('area:L3','opis',(10,0,30,40),poly)
+        class NarrowFreeCorridor:
+            def przecina(self, rect):
+                x,y = engine.srodek(rect)
+                return not (abs(x - 26) < .1 and abs(y - 68) < .1)
+        positions = list(engine._pozycje_zewnetrzne(
+            e,NarrowFreeCorridor(),[poly],margines=2.5))
+        self.assertEqual(len(positions),1)
+        x,y = engine.srodek(positions[0])
+        self.assertAlmostEqual(x,26)
+        self.assertAlmostEqual(y,68)
+
+    def test_exterior_sampler_uses_label_relative_distances(self):
+        poly = [(0,0),(40,0),(40,40),(0,40)]
+        small = item('small:L3','opis',(10,0,30,40),poly)
+        big = item('big:L3','opis',(10,-20,30,60),poly)
+        class Free:
+            def przecina(self, rect):
+                return False
+        small_centers = [engine.srodek(r) for r in
+                         engine._pozycje_zewnetrzne(
+                             small,Free(),[poly],margines=2.5)]
+        big_centers = [engine.srodek(r) for r in
+                       engine._pozycje_zewnetrzne(
+                           big,Free(),[poly],margines=2.5)]
+        self.assertTrue(small_centers)
+        self.assertTrue(big_centers)
+        self.assertNotEqual(small_centers,big_centers)
+
     def test_common_anchor_for_two_exterior_labels(self):
         poly = [(0,0),(18,0),(18,18),(0,18)]
         a = item('a:L2','litera',(4,4,24,24),poly)
