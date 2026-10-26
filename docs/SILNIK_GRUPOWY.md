@@ -62,3 +62,36 @@ Pomyślny wynik testów geometrycznych nie zastępuje kontroli w GEO-MAP.
 Kolejny etap: analiza diagnostyki `3h`, `3g`, `3r` i całej mapy BYSŁAW,
 poprawa ograniczonych przypadków, następnie transakcyjny eksporter L2/L3
 z testami round-trip i bez nadpisywania oryginału.
+
+## Raport nazewniczy A1/UUID — bez ponownego uruchamiania optymalizatora
+
+Jeżeli diagnostyka wygenerowała już JSON, do wyszukania wydzieleń 3h,
+3g i 3r wystarczy połączyć go z wejściową mapą (oba pliki czytane są
+bez modyfikacji):
+
+```cmd
+py -m app.core.raport_etykiet "01_BYSŁAW_z_opisami.MAP" "byslaw_silnik_grupowy.json" --etykiety 3g 3h 3r
+```
+
+Skrypt wyświetla oryginalny A1 i A2, UUID, podział problemów
+oraz liczbę zmienionych napisów i wysięgników. Bez filtra wypisze 15
+najbardziej konfliktowych wydzieleń:
+
+```cmd
+py -m app.core.raport_etykiet "01_BYSŁAW_z_opisami.MAP" "byslaw_silnik_grupowy.json" --top 15
+```
+
+Raport musi pochodzić z mapy o tej samej nazwie i liczbie etykiet;
+same te kontrole nie wykrywają każdej możliwej podmiany zawartości.
+
+## Obserwacje z pierwszego, pełniejszego raportu BYSŁAW
+
+Raport użytkownika przed aktualizacją profilowania: 416 etykiet
+w 268 wydzieleniach, 2369 poligonów mapy. Liczba kolizji napisów
+88 -> 70; napisów poza swoim poligonem bez wysięgnika 193 -> 124.
+Sto pozycji etykiet uległo zmianie, z czego 35 zyskało wysięgnik.
+Pięć wydzieleń ma dwa wysięgniki ze wspólnym punktem docelowym.
+Największe przesunięcie napisu około 267 m — dlatego usunięto
+sztuczne ucięcie kosztu przesunięcia po 100 m i zastosowano koszt
+unormowany wysokością napisu. Te wyniki są z poprzedniej implementacji,
+nie stanowią benchmarku nowej funkcji kosztu.
