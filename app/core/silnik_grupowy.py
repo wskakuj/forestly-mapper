@@ -134,9 +134,29 @@ def _pozycje_zewnetrzne(e, granice, poligony, margines,
             y = y0 + (y1 - y0) * t
             points.extend(((x, y0 - h / 2 - d), (x, y1 + h / 2 + d),
                            (x0 - w / 2 - d, y), (x1 + w / 2 + d, y)))
-    points.sort(key=lambda p: math.dist(p, srodek(old)))
-    seen = set()
+    # Zachowuj różne kierunki. Same najbliższe punkty mogą wszystkie
+    # wypaść po jednej stronie, uniemożliwiając dwa wspólne wysięgniki.
+    strony = {"gora": [], "dol": [], "lewo": [], "prawo": []}
     for p in points:
+        if p[1] > y1 + h / 2:
+            strony["gora"].append(p)
+        elif p[1] < y0 - h / 2:
+            strony["dol"].append(p)
+        elif p[0] < x0 - w / 2:
+            strony["lewo"].append(p)
+        else:
+            strony["prawo"].append(p)
+    for lista in strony.values():
+        lista.sort(key=lambda p: math.dist(p, srodek(old)))
+    # Round-robin: reprezentacja każdej strony, bez uprzywilejowania
+    # orientacji konkretnej mapy.
+    kolejka = []
+    for i in range(max(map(len, strony.values()))):
+        for strona in ("gora", "dol", "lewo", "prawo"):
+            if i < len(strony[strona]):
+                kolejka.append(strony[strona][i])
+    seen = set()
+    for p in kolejka:
         r = prost(p, (w, h))
         key = tuple(round(v, 3) for v in r)
         if key in seen:
