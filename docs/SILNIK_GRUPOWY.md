@@ -582,3 +582,47 @@ Zmiana jest rankingiem/geometrią symulacji i nie eksportuje MAP.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_zwarte_v8.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_zwarte_v8.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_zwarte_v8.svg"
 \`\`\`
+
+
+## Etap V8B — odczyt rzeczywistych przecięć wysięgników z obiektami MAP
+
+Analiza wyniku \`byslaw_4abc_zwarte_v8.json\` wykazała:
+- rozwiązanie \`4a/4b/4c\` bez problemów *modelowanych* przez
+  \`geometria_ukladu\`, z 280 → 265 zgłoszeniami na całej mapie;
+- wybrana próba 72 wariantów ma koszt 858,05 (wcześniejsza
+  próba 24 wariantów: 861,56), więc nastąpiła poprawa **funkcji
+  kosztu**, a nie automatycznie wszystkich aspektów geometrii;
+- \`4a\` ma prostokąty oddalone już o 5 m, ale dwa wysięgniki
+  mają odpowiednio ok. 61,3 m i 70,3 m (wcześniej 20,8 i 50,2 m).
+  Zwartość nie zastępuje wymagania rozsądnej długości linii.
+
+Bezpieczna diagnostyka jest rozszerzona o pola:
+- \`przeciecia_wysiegnikow_obiekty_mapy\` — dla każdego
+  analizowanego wysięgnika: punkty przecięcia z liniowymi
+  fragmentami obiektów GEO-MAP, rozpoznane rodzaje obiektów,
+  czy punkt należy do granicy **własnego** wydzielenia,
+  liczba dodatkowych punktów oraz współliniowe nakładanie;
+- \`liczba_dodatkowych_przeciec_wysiegnikow\` — suma dodatkowych
+  punktów, z pominięciem granicy własnego wydzielenia.
+
+Ta sama linia na kilku warstwach GEO-MAP jest agregowana
+**według współrzędnych rzeczywistego przecięcia** (0,01 jednostki),
+zamiast fałszywego liczenia wielu oddzielnych problemów.
+Przecięcia z własnym poligonem są oczekiwane, gdy dwa napisy
+znajdują się na zewnątrz. Dodatkowe przecięcia nie stanowią
+na razie automatycznego błędu: nie każda linia mapy (podział
+geometryczny, droga, granica, warstwa kopiowana) powinna być
+sztywną przeszkodą dla wysięgnika. Jest to **raport ostrzegawczy**,
+który pozwoli wybrać reguły GIS przed pierwszym eksportem MAP.
+
+Nowy raport uruchamia ta sama komenda diagnostyczna,
+z kolejną nazwą pliku:
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_przeciecia_v9.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_przeciecia_v9.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_przeciecia_v9.svg"
+\`\`\`
+
+To nadal wynik tylko diagnostyczny; źródłowe MAP i INI nie
+są zapisywane ani zmieniane. \`pelna_walidacja_topologii=false\`
+pozostaje prawidłowym, ostrożnym oznaczeniem.
