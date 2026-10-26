@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.core import diagnostyka_map as dm
 from app.core import kontury_map as km
+from app.core import przeciecia_map as pm
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
 from app.core import silnik_grupowy as engine
@@ -106,79 +107,31 @@ def _statystyki_kandydatow(elementy, poligony, wydzielenia):
 
 
 def _przeciecia_wysiegnikow_z_obiektami(elementy, obiekty, lines,
-                                       wybrane=None):
-    """Ostrzeżenia o przecięciach odcinków z geometrią GEO-MAP.
+                                       wybrane=None, indeks=None):
+    """Przecięcia z liniami MAP; własne granice są oznaczone osobno.
 
-    Ten sam fragment może istnieć w kilku warstwach (np. 5216,
-    5214 i 4220); raport grupuje współliniowe odcinki według punktu
-    przecięcia. Przejście przez własną granicę jest osobno oznaczone.
-    Nie narzucamy automatycznie zakazu przekraczania wszystkich warstw:
-    dla wydzielenia wysięgnik musi przeciąć jego obwód.
+    Indeks jest współdzielony z opcjonalną karą planów. Powtarzające się
+    obiekty o różnych typach liczą się jako jeden fizyczny punkt.
     """
-    edges = []
-    for obj in obiekty:
-        header = lines[obj["start"]].split()
-        typ = header[0] if header else "?"
-        owner = next((line[4:-1] for line in obj["linie"]
-                      if line.startswith(":ID[") and line.endswith("]")),
-                     None)
-        for frag in km.fragmenty_z_linii(obj["linie"]):
-            for a, b, box in engine.krawedzie([frag]):
-                edges.append((a, b, box, typ, owner))
-    out = []
+    index = indeks if indeks is not None else pm.IndeksPrzeciec(obiekty, lines)
+    result = []
     for e in elementy:
         w = e.get("wysiegnik")
-        if w is None or (wybrane is not None and
-                         e["wydzielenie"] not in wybrane):
+        if not w or (wybrane is not None and
+                     e["wydzielenie"] not in wybrane):
             continue
-        a, b = w
-        area = (min(a[0], b[0]), min(a[1], b[1]),
-                max(a[0], b[0]), max(a[1], b[1]))
-        grouped = {}
-        overlaps = []
-        for c, d, box, typ, owner in edges:
-            if (box[0] > area[2] + geo.EPS or
-                    box[2] < area[0] - geo.EPS or
-                    box[1] > area[3] + geo.EPS or
-                    box[3] < area[1] - geo.EPS):
-                continue
-            kind, point = geo.przeciecie_odcinkow(a, b, c, d)
-            if kind == "brak":
-                continue
-            if kind == "nakladanie":
-                overlaps.append({"typ": typ, "id_obiektu": owner})
-                continue
-            key = (round(point[0], 2), round(point[1], 2))
-            group = grouped.setdefault(key, {"punkt":list(key),
-                                                "typy":set(),
-                                                "wlasna_granica":False})
-            group["typy"].add(typ)
-            if owner == e["wydzielenie"] and typ == "*5310":
-                group["wlasna_granica"] = True
-        points = sorted(grouped.values(),key=lambda x:tuple(x["punkt"]))
-        independent = [p for p in points if not p["wlasna_granica"]]
-        out.append({
-            "id_napisu": e["id"],
-            "etykieta": e.get("tekst", ""),
-            "liczba_punktow_przeciec": len(points),
-            "liczba_dodatkowych_przeciec": len(independent),
-            "liczba_nakladajacych_sie_odcinkow": len(overlaps),
-            "punkty": [
-                {"punkt":p["punkt"],
-                 "typy_obiektow":sorted(p["typy"]),
-                 "wlasna_granica":p["wlasna_granica"]}
-                for p in points],
-            "nakladanie": overlaps[:5],
-        })
-    return out
-
+        result.append({"id_napisu":e["id"], "etykieta":e.get("tekst",""),
+                       **index.raport(w, e["wydzielenie"])})
+    return result
 
 
 def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               szerokosc_wiazki=8, maks_grupa=3, przebiegi=1,
               limit_grup=8, postep=None, etykiety=(),
-              sprawdz_warianty=False):
+              sprawdz_warianty=False, kara_przeciecia=0.0):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
+    if kara_przeciecia < 0:
+        raise ValueError('--kara-przeciecia nie moze byc ujemna')
     path = Path(sciezka)
     mapa = onm.wczytaj_mape(path)
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
@@ -192,6 +145,9 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     niedomkniete = [o for o in obiekty
                     if mapa["lines"][o["start"]].startswith("*5310 ")
                     and not km.model_wydzielenia(o["linie"])["kompletne"]]
+    indeks_przeciec = pm.IndeksPrzeciec(obiekty, mapa['lines'])
+    dodatkowy_koszt = (lambda plan: indeks_przeciec.kara_planu(
+        plan, kara_przeciecia)) if kara_przeciecia else None
     nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
              if e["rodzaj"] == "litera"}
     szukane = {x.strip().casefold() for x in etykiety if x.strip()}
@@ -217,7 +173,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         szerokosc_wiazki=szerokosc_wiazki,
         maks_grupa=maks_grupa, przebiegi=przebiegi,
         limit_grup=limit_grup, postep=pokaz,
-        wybrane_wydzielenia=znalezione if szukane else None)
+        wybrane_wydzielenia=znalezione if szukane else None,
+        ocena_dodatkowa=dodatkowy_koszt)
     statystyki_wariantow = (
         _statystyki_kandydatow(przed, wszystkie, znalezione)
         if sprawdz_warianty and znalezione else [])
@@ -236,7 +193,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     wczesniejsze = geo.waliduj_uklad(przed)
     pozniejsze = geo.waliduj_uklad(po)
     przeciecia = _przeciecia_wysiegnikow_z_obiektami(
-        po, obiekty, mapa["lines"], znalezione if szukane else None)
+        po, obiekty, mapa["lines"], znalezione if szukane else None,
+        indeks=indeks_przeciec)
     return {
         "plik_wejsciowy": str(path),
         "skala": scale, "wysokosc_mm": wysokosc_mm,
@@ -262,6 +220,11 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
         "przeciecia_wysiegnikow_obiekty_mapy": przeciecia,
         "liczba_dodatkowych_przeciec_wysiegnikow": sum(
             item["liczba_dodatkowych_przeciec"] for item in przeciecia),
+        "kara_za_przeciecie": kara_przeciecia,
+        "koszt_kary_wybranego_ukladu": (
+            dodatkowy_koszt([e for e in po
+                             if not szukane or e['wydzielenie'] in znalezione])
+            if dodatkowy_koszt else 0.0),
         "zmiany": zmiany,
         "raport_silnika": raport,
         "analiza_czesciowa": raport.get("analiza_czesciowa", False),
@@ -283,6 +246,8 @@ def main(argv=None):
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
     p.add_argument("--etykiety", nargs="+", default=(),
                    help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
+    p.add_argument('--kara-przeciecia', type=float, default=0.0,
+                   help='Miekka kara kosztowa za dodatkowe przeciecie linii MAP (0=bez kary)')
     p.add_argument("--sprawdz-warianty", action="store_true",
                    help="Policz odrzucone warianty (wymaga --etykiety)")
     p.add_argument("--json", help="Zapisz raport w osobnym pliku .json")
@@ -298,6 +263,8 @@ def main(argv=None):
             p.error("--%s musi byc dodatnie" % name)
     if args.limit_grup < 0:
         p.error("--limit-grup nie moze byc ujemny")
+    if args.kara_przeciecia < 0:
+        p.error('--kara-przeciecia nie moze byc ujemna')
     if args.sprawdz_warianty and not args.etykiety:
         p.error("--sprawdz-warianty wymaga --etykiety")
 
@@ -319,7 +286,8 @@ def main(argv=None):
             args.wiazka, args.maks_grupa, args.przebiegi,
             limit_grup=None if args.limit_grup == 0 else args.limit_grup,
             postep=postep, etykiety=args.etykiety,
-            sprawdz_warianty=args.sprawdz_warianty)
+            sprawdz_warianty=args.sprawdz_warianty,
+            kara_przeciecia=args.kara_przeciecia)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
