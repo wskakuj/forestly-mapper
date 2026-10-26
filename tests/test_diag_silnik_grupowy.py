@@ -79,6 +79,32 @@ class ReadOnlyMapTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             index.kara_planu([one],-10)
 
+    def test_three_self_crossings_are_counted_and_penalized(self):
+        from app.core import przeciecia_map as pm
+        # Dwa rozłączne pierścienie tego samego wydzielenia A.
+        # Linia z lewej do prawej przekracza ich granice 3 razy:
+        # wejście do pierwszego, wyjście, wejście do drugiego.
+        block = [
+            "*5310 255 24 0", ":ID[A]",
+            "P 1 0 0", "P 1 20 0", "P 1 20 20", "P 1 0 20", "P 0 0 0",
+            "P 1 40 0", "P 1 60 0", "P 1 60 20", "P 1 40 20",
+            "P 0 40 0", "P 0 0 0",
+        ]
+        idx = pm.IndeksPrzeciec([{"start":0,"linie":block}],block)
+        long_line = {"id":"A:L2","wydzielenie":"A",
+                     "wysiegnik":((-10,10),(50,10))}
+        short_line = dict(long_line,wysiegnik=((30,10),(50,10)))
+        report = idx.raport(long_line["wysiegnik"],"A")
+        self.assertEqual(report["liczba_przeciec_wlasnej_granicy"],3)
+        self.assertEqual(
+            report["liczba_nadmiarowych_przeciec_wlasnej_granicy"],2)
+        self.assertEqual(report["liczba_dodatkowych_przeciec"],0)
+        self.assertEqual(idx.kara_planu([long_line],25,50),100)
+        self.assertEqual(idx.kara_planu([long_line],25,0),0)
+        self.assertEqual(idx.kara_planu([short_line],25,50),0)
+        with self.assertRaises(ValueError):
+            idx.kara_planu([long_line],25,-1)
+
     def test_optional_penalty_report_does_not_modify_map(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "input.MAP"
@@ -88,6 +114,11 @@ class ReadOnlyMapTests(unittest.TestCase):
                 src,skala=4000,etykiety=["a"],kara_przeciecia=20.0)
             self.assertEqual(result["kara_za_przeciecie"],20.0)
             self.assertGreaterEqual(result["koszt_kary_wybranego_ukladu"],0)
+            self.assertIn("liczba_nadmiarowych_przeciec_wlasnej_granicy",result)
+            other = diag.diagnozuj(
+                src,skala=4000,etykiety=["a"],
+                kara_przeciecia=25,kara_wielokrotnej_granicy=50)
+            self.assertEqual(other["kara_wielokrotnej_granicy"],50)
             self.assertEqual(original,src.read_bytes())
             with self.assertRaisesRegex(ValueError,"ujemna"):
                 diag.diagnozuj(src,skala=4000,kara_przeciecia=-2)
