@@ -341,3 +341,33 @@ py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_kontury.js
 ```
 
 Podgląd SVG zachowuje własne kontury już od poprzedniego etapu.
+
+
+## Etap 6B — nienaprawione 4a i 4b na podglądzie SVG
+
+Rzeczywisty raport \`byslaw_4abc_kontury.json\` miał 280 problemów
+na całej mapie przed analizą i 273 po niej. Zmieniono **tylko dwa
+napisy 4c** (L2 i L3), oba ze wspólnym wysięgnikiem w poligonie.
+Wydzielenia \`4a\` i \`4b\` **nie zostały naprawione** — nachodzące
+litery i opisy na planszy PO nie oznaczały nowo zaakceptowanej kolizji,
+lecz pozostawienie pierwotnego nierozwiązanego układu. W diagnostyce
+\`4a\` miało 0/24 planów wolnych wobec oryginalnego otoczenia;
+\`4b\` miało 23/24, ale w miarę przechodzenia po UUID zmiana \`4c\`
+mogła mu zablokować dostępne warianty.
+
+Nie oznacza to, że poprawne pozycje na pewno nie istnieją.
+Zmiana ogólna: iteruj najpierw po wydzieleniach o największej
+liczbie zgłoszonych kolizji i problemów, zamiast arbitralnej
+kolejności UUID. To heurystyka, a nie gwarancja naprawy:
+raport nowego przebiegu trzeba sprawdzić osobno.
+
+SVG pokazuje teraz nad każdą planszą wyraźne
+\`NIEROZWIAZANE: 4a, 4b\` w przypadku problemów po symulacji
+oraz status bez wykrytych problemów, jeśli celowe wydzielenia są
+poprawne wg walidatora. Ulepszono również kontrast liter i opisów.
+**Nadal nie zapisujemy MAP**.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_kolejnosc_v3.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_kolejnosc_v3.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_kolejnosc_v3.svg"
+\`\`\`
