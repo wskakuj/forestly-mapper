@@ -64,7 +64,9 @@ def _mapowanie_linii(mapa):
                 ident=uid+":L"+nr
                 if ident in result:
                     raise ValueError("Powtorzona linia "+ident)
-                result[ident]=obj["start"]+offset
+                # obj["linie"] pomija naglowek '*' obiektu; offset
+                # jest wiec liczony od start+1 (zwraca absolutny indeks).
+                result[ident]=obj["start"]+1+offset
     return result
 
 
