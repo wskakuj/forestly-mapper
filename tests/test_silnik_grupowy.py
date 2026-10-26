@@ -205,6 +205,24 @@ class EngineTests(unittest.TestCase):
         self.assertGreaterEqual(report['pominiete_przez_wybor'],1)
         self.assertTrue(report['analiza_czesciowa'])
 
+    def test_most_conflicted_group_is_processed_first(self):
+        """Priority must depend on real conflicts, not arbitrary UUID order."""
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(300,0),(400,0),(400,100),(300,100)]
+        elements = [
+            item('a:L2','litera',(20,20,32,32),pa),
+            item('a:L3','opis',(24,24,44,44),pa),
+            item('z:L2','litera',(425,25,445,45),pb),
+            item('z:L3','opis',(428,28,453,53),pb),
+        ]
+        progress = []
+        with patch.object(engine, 'opcje_wydzielenia', return_value=[]):
+            _, report = engine.optymalizuj(
+                elements, wszystkie_poligony=[pa,pb],
+                limit_grup=1, przebiegi=1, postep=progress.append)
+        self.assertEqual(report['rozpatrzone_grupy'], 1)
+        self.assertEqual(progress[0]['wydzielenie'], 'z')
+
     def test_progress_callback_and_partial_scan(self):
         pa = [(0,0),(100,0),(100,100),(0,100)]
         pb = [(200,0),(300,0),(300,100),(200,100)]
