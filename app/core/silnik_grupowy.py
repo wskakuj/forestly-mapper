@@ -279,6 +279,26 @@ def _koszt(wariant, oryginaly):
         score += 8.0 * displacement / wysokosc
         if outside:
             score += 6.0 * math.dist(*e["wysiegnik"]) / wysokosc
+
+    # Estetyka pary L2/L3 jest osobna od poprawności geometrycznej.
+    # Dwa napisy tego samego wydzielenia powinny pozostać blisko siebie
+    # o ile nie wymaga to kolizji. V6 dla 4a było poprawne, lecz
+    # litera znajdowała się daleko poniżej opisu. Wysokość napisów
+    # normalizuje koszt dla różnych skal MAP.
+    letter = next((e for e in wariant if e["rodzaj"] == "litera"), None)
+    desc = next((e for e in wariant if e["rodzaj"] == "opis"), None)
+    if letter is not None and desc is not None:
+        height = max(
+            ((letter["prostokat"][3] - letter["prostokat"][1])
+             + (desc["prostokat"][3] - desc["prostokat"][1])) / 2,
+            geo.EPS)
+        gap = odleglosc_boxow(letter["prostokat"], desc["prostokat"])
+        external_count = sum(bool(e.get("wysiegnik"))
+                             for e in (letter, desc))
+        # Największy nacisk na parę z dwoma wysięgnikami; litera
+        # wewnątrz i opis poza również korzystają z bliskości.
+        strength = (7.0, 12.0, 18.0)[external_count]
+        score += strength * gap / height
     return score
 
 
