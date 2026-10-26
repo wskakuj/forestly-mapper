@@ -203,14 +203,21 @@ def _poprawne(elementy, odstep=2.5):
 
 
 def _koszt(wariant, oryginaly):
+    """Skala niezależna od jednostki mapy: odległość w wysokościach napisu.
+
+    Każde dalsze przesunięcie ma większy koszt. Nie ucinamy go po 100 m:
+    wcześniej przesunięcie o 120 m i 260 m było oceniane identycznie.
+    """
     score = 0.0
     for e in wariant:
+        r = e["prostokat"]
+        wysokosc = max(r[3] - r[1], geo.EPS)
         outside = e["wysiegnik"] is not None
         score += (180 if e["rodzaj"] == "litera" else 120) if outside else 0
-        score += min(100, math.dist(srodek(e["prostokat"]),
-                                     srodek(oryginaly[e["id"]]["prostokat"]))) * .1
+        displacement = math.dist(srodek(r), srodek(oryginaly[e["id"]]["prostokat"]))
+        score += 8.0 * displacement / wysokosc
         if outside:
-            score += math.dist(*e["wysiegnik"]) * .3
+            score += 6.0 * math.dist(*e["wysiegnik"]) / wysokosc
     return score
 
 
