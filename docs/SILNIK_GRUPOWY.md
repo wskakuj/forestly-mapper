@@ -733,3 +733,56 @@ MAP nadal nigdy nie jest modyfikowany.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_granice_v11.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_granice_v11.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_granice_v11.svg"
 \`\`\`
+
+
+## Etap V12 — widoczne punkty celowe wysięgników zamiast najbliższych dziewięciu
+
+Rzeczywisty wynik \`byslaw_4abc_granice_v11.json\` wykazał:
+- nadal \`3/3\` wydzielenia \`4a/4b/4c\` bez kolizji napisów
+  wg modelu (\`280→265\` zgłoszeń na mapie);
+- **zero** nadmiarowych przecięć własnych granic
+  (w V10 były **cztery**, po dwa na wysięgnik \`4a\`);
+- **dwa** dodatkowe przecięcia z liniami \`*5214/*5216\`
+  w \`4a\`, które występowały już w V9; kara
+  \`koszt_kary_wybranego_ukladu=50\`.
+  Zewnętrzna litera \`4a\` miała wysięgnik ~61,3 m,
+  opis ~70,3 m. Był to kompromis punktacji, a nie
+  kompletne rozwiązanie kartograficzne.
+
+Problem leżał także w ograniczonym **zbiorze punktów docelowych**:
+dla dwóch napisów poza poligonem silnik wypróbowywał
+zwykle 9 punktów najbliższych ich prostokątom. Istotny
+punkt wewnątrz właściwej, wąskiej części wydzielenia
+mógł nawet nie powstać w globalnej siatce \`bbox\`.
+
+W V12 \`_cele\` w trybie rozszerzonym (siatka \`n>=9\`)
+dla wielokonturowych wydzieleń dodaje lokalną siatkę
+5×5 **każdego pierścienia** oraz kilka kandydatów
+położonych tuż za jego krawędziami. Każdy punkt
+przechodzi tę samą walidację wnętrza wielopierścieniowego
+poligonu z marginesem 1,2 jednostki. Nie wydłużamy
+globalnego przeszukiwania pojedynczych prostych działek.
+
+Funkcja \`_cele_ocenione\` rozważa zróżnicowaną
+pulę najbliższych i bardziej oddalonych celów.
+Przy aktywnych kosztach GEO-MAP kolejność zależy
+od długości projektowanego wysięgnika **oraz**
+rzeczywistej kary z indeksu przecięć obcych linii
+i wielokrotnych przejść przez własną granicę.
+Bez włączonej opcjonalnej kary zachowuje wcześniejszy
+sposób wybierania najbliższych celów.
+
+Mechanizm jest ogólny dla grupy etykiet pojedynczych
+i par \`L2/L3\`, także gdy dwa napisy poza wydzieleniem
+wymagają **wspólnego punktu docelowego**. Reguły
+bezkolizyjności i prostoliniowości pozostają twarde.
+Nie ma gwarancji, że ograniczony zbiór kandydatów
+zawiera konfigurację z zerową liczbą obu rodzajów
+przecięć; wynik trzeba zweryfikować na prawdziwym MAP.
+
+Test kontrolny bez zapisywania oryginału:
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_cele_v12.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_cele_v12.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_cele_v12.svg"
+\`\`\`
