@@ -680,3 +680,56 @@ zweryfikowana i należy porównać rezultat w GEO-MAP.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --sprawdz-warianty --json "byslaw_4abc_miekkie_przeciecia_v10.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_miekkie_przeciecia_v10.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_miekkie_przeciecia_v10.svg"
 \`\`\`
+
+
+## Etap V11 — ograniczenie wielokrotnego przekraczania własnej granicy
+
+Rzeczywisty test V10 \`byslaw_4abc_miekkie_przeciecia_v10.json\`
+dał \`liczba_dodatkowych_przeciec_wysiegnikow=0\`,
+a wszystkie \`4a/4b/4c\` nadal nie mają modelowanych kolizji
+napisów (globalnie 280→265 problemów).
+Jednakże obydwa wysięgniki \`4a\` **trzykrotnie** przecinają
+własną granicę \`*5310\`: linie wchodzą w wydzielenie,
+wychodzą z niego i wchodzą ponownie. Każdy wysięgnik
+ma więc **2 nadmiarowe przekroczenia**, łącznie **4**.
+To istotne, szczególnie dla wydzieleń o rozłącznych konturach
+lub wewnętrznych pierścieniach. Sam brak przecięć obcych
+warstw nie oznacza jeszcze poprawnego przebiegu wysięgnika.
+Co więcej, wysięgnik opisu \`4a\` ma w V10 ok. 75,4 m
+(V9: ok. 70,3 m); długości nie poprawiły się jednolicie.
+
+Indeks przecięć zapisuje teraz dla każdej linii:
+\`liczba_przeciec_wlasnej_granicy\` oraz
+\`liczba_nadmiarowych_przeciec_wlasnej_granicy\`.
+Za nadmiar uznaje się liczbę przecięć własnego obrysu ponad
+pierwsze — przejście przez własną granicę przy prowadzeniu
+linii z zewnątrz do jej wnętrza pozostaje dozwolone.
+Wynik zbiorczy to
+\`liczba_nadmiarowych_przeciec_wlasnej_granicy\`.
+
+Nowa **opcjonalna, niezależna** kara:
+\`--kara-wielokrotnej-granicy 50\`.
+Wpisuje dodatkowe 50 punktów za każde nadmiarowe przecięcie.
+Dla V10 (4 nadmiarowe punkty) zwiększyłaby koszt o 200.
+Parametr \`--kara-przeciecia 25\` nadal osobno karze za
+obce linie. Obie wartości domyślnie są 0 — starsze
+polecenia i porównania pozostają zgodne. Obie kary są
+**miękkie**, a nie zakazujące każdej kombinacji:
+jeśli nie da się uniknąć wszystkich dodatkowych przecięć
+w ograniczonej puli, raport nie zataja pozostałych.
+Skan zawężony do 2–3 wydzieleń może przejść przez
+24, 72 i 112 wariantów, gdy najlepsza propozycja nadal
+ma niezerową karę kartograficzną.
+
+Sugerowany cel porównania V11: 3/3 bez kolizji napisów,
+liczba obcych przecięć **i** nadmiarowych przekroczeń
+własnej granicy możliwie blisko zera oraz niepogorszone
+długości wysięgników. Nowe testy kontrolują przypadek
+dwóch rozłącznych pierścieni tego samego wydzielenia,
+przeciętych przez jeden odcinek trzy razy. Oryginalny
+MAP nadal nigdy nie jest modyfikowany.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --sprawdz-warianty --json "byslaw_4abc_granice_v11.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_granice_v11.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_granice_v11.svg"
+\`\`\`
