@@ -236,6 +236,58 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(geo.prostokat_w_poligonie(r,model)
                             for r in found))
 
+    def test_exact_joint_search_does_not_drop_necessary_third_plan(self):
+        """A cheap partial combination is not sufficient for all three."""
+        poly = [(0,0),(300,0),(300,300),(0,300)]
+        orig = {
+            'a:L2': item('a:L2','litera',(5,5,15,15),poly),
+            'b:L2': item('b:L2','litera',(35,5,45,15),poly),
+            'c:L2': item('c:L2','litera',(65,5,75,15),poly),
+        }
+        def rectplan(k,box):
+            return [dict(orig[k + ':L2'], prostokat=box)]
+        plans = {
+            'a': [rectplan('a',(10,10,20,20)),
+                  rectplan('a',(60,60,70,70))],
+            'b': [rectplan('b',(60,60,70,70)),
+                  rectplan('b',(90,10,100,20))],
+            'c': [rectplan('c',(10,10,20,20))],
+        }
+        chosen, report = engine._wspolny_plan_dokladny(
+            ['a','b','c'],plans.__getitem__,orig,orig,2.5)
+        self.assertTrue(report['sukces'])
+        self.assertEqual(len(chosen),3)
+        self.assertEqual(
+            next(e for e in chosen if e['id'] == 'a:L2')['prostokat'],
+            (60,60,70,70))
+        self.assertEqual(
+            next(e for e in chosen if e['id'] == 'b:L2')['prostokat'],
+            (90,10,100,20))
+        self.assertFalse(geo.waliduj_uklad(chosen))
+
+    def test_explicit_small_cluster_is_optimized_jointly_before_greedy(self):
+        items = []
+        plans = {}
+        for number, label in enumerate(('a','b','c')):
+            x = number * 200
+            poly = [(x,0),(x+100,0),(x+100,100),(x,100)]
+            letter = item(label+':L2','litera',(x+20,20,x+35,35),poly)
+            desc = item(label+':L3','opis',(x+20,20,x+45,45),poly)
+            items.extend([letter,desc])
+            plans[label] = [[dict(letter,prostokat=(x+10,10,x+25,25)),
+                             dict(desc,prostokat=(x+10,45,x+35,70))]]
+        with patch.object(engine,'opcje_wydzielenia',
+                          side_effect=lambda group,*a,**kw:
+                          plans[group[0]['wydzielenie']]):
+            result, report = engine.optymalizuj(
+                items, maks_grupa=3, przebiegi=1,
+                wybrane_wydzielenia={'a','b','c'},
+                wszystkie_poligony=[e['poligon'] for e in items])
+        self.assertEqual(report['wspolna_proba']['sukces'],True)
+        self.assertEqual(report['wspolna_proba']['liczba_wydzielen'],3)
+        self.assertEqual(geo.waliduj_uklad(result),[])
+        self.assertEqual(len(result),6)
+
     def test_actual_label_blocker_selected_before_nearest_polygon(self):
         """Geometrically distant owner may have a label blocking the target."""
         pa = [(0,0),(100,0),(100,100),(0,100)]
