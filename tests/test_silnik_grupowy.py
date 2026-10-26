@@ -346,6 +346,29 @@ class EngineTests(unittest.TestCase):
         self.assertIn(72,seen_limits)
         self.assertFalse(geo.waliduj_uklad(placed))
 
+    def test_joint_solver_prefers_crossing_free_plan_with_soft_cost(self):
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(200,0),(300,0),(300,100),(200,100)]
+        ea = item('a:L2','litera',(20,20,40,40),pa)
+        eb = item('b:L2','litera',(220,20,240,40),pb)
+        moved = dict(ea,prostokat=(55,20,75,40))
+        original = {e['id']:e for e in (ea,eb)}
+        plans = {'a':[[ea],[moved]],'b':[[eb]]}
+        baseline,_ = engine._wspolny_plan_dokladny(
+            ['a','b'],plans.__getitem__,original,original,2.5)
+        self.assertEqual(next(e for e in baseline if e['id']=='a:L2')
+                         ['prostokat'], ea['prostokat'])
+        def penalty(plan):
+            return 50 if any(e['id']=='a:L2' and
+                             e['prostokat']==ea['prostokat']
+                             for e in plan) else 0
+        scored,report = engine._wspolny_plan_dokladny(
+            ['a','b'],plans.__getitem__,original,original,2.5,
+            ocena_dodatkowa=penalty)
+        self.assertTrue(report['sukces'])
+        self.assertEqual(next(e for e in scored if e['id']=='a:L2')
+                         ['prostokat'], moved['prostokat'])
+
     def test_exact_joint_search_does_not_drop_necessary_third_plan(self):
         """A cheap partial combination is not sufficient for all three."""
         poly = [(0,0),(300,0),(300,300),(0,300)]
