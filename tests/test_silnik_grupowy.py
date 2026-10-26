@@ -403,6 +403,28 @@ class EngineTests(unittest.TestCase):
         score2 = engine._koszt([p2], original)
         self.assertGreater(score2, score1)
 
+    def test_aesthetic_score_prefers_compact_pair_at_equal_movement(self):
+        poly = [(0,0),(1000,0),(1000,1000),(0,1000)]
+        letter = item('a:L2','litera',(0,0,10,20),poly)
+        desc = item('a:L3','opis',(0,0,20,20),poly)
+        original = {e['id']:e for e in (letter,desc)}
+        near = [letter,dict(desc,prostokat=(-25,0,-5,20))]
+        far = [letter,dict(desc,prostokat=(25,0,45,20))]
+        # Ruch opisu jest w obu przypadkach taki sam (25 jednostek).
+        # Różni się jedynie odstęp do litery: 5 kontra 15.
+        self.assertAlmostEqual(
+            engine._koszt(far,original) - engine._koszt(near,original),
+            7.0 * (15-5) / 20)
+        target = (3,50)
+        both_near = [dict(e,wysiegnik=(engine.srodek(e['prostokat']),target))
+                     for e in near]
+        both_far = [dict(e,wysiegnik=(engine.srodek(e['prostokat']),target))
+                    for e in far]
+        # Dwa zewnętrzne napisy mają większą preferencję kompaktowości.
+        # Korekta opisuje tylko ranking, nie zwalnia z walidacji.
+        self.assertGreater(engine._koszt(both_far,original),
+                           engine._koszt(both_near,original))
+
     def test_move_score_scales_with_label_size(self):
         poly = [(0,0),(1000,0),(1000,1000),(0,1000)]
         e = item('a:L3','opis',(0,0,10,20),poly)
