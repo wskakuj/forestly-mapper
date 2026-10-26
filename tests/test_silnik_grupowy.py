@@ -249,6 +249,33 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(all(geo.punkt_w_poligonie(p,poly)
                             for p in extended))
 
+    def test_weighted_plan_pool_reserves_clean_family(self):
+        """Cheaper but penalized candidates must not erase a rare clean one."""
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        label = item('a:L2','litera',(20,20,30,30),poly)
+        near = [(200+i*3,20,210+i*3,30) for i in range(40)]
+        clean = (6000,20,6010,30)
+        boxes = near + [clean]
+        def positions(*args,**kwargs):
+            return iter(boxes)
+        def cost(plan):
+            return 0 if plan[0]["prostokat"] == clean else 50
+        with (patch.object(engine,'_pozycje_wewnatrz',
+                           side_effect=lambda *a,**kw:iter(())),
+              patch.object(engine,'_pozycje_zewnetrzne',
+                           side_effect=positions),
+              patch.object(engine,'_cele',return_value=iter([(50,50)])),
+              patch.object(engine,'_poprawne',return_value=True)):
+            plain=engine.opcje_wydzielenia(
+                [label],engine.Granice([]),[],limit=25)
+            weighted=engine.opcje_wydzielenia(
+                [label],engine.Granice([]),[],limit=25,
+                ocena_dodatkowa=cost)
+        self.assertEqual(len(plain),25)
+        self.assertEqual(len(weighted),25)
+        self.assertNotIn(clean,[p[0]["prostokat"] for p in plain])
+        self.assertIn(clean,[p[0]["prostokat"] for p in weighted])
+
     def test_weighted_target_sampling_keeps_farther_crossing_free_goal(self):
         poly = [(0,0),(100,0),(100,100),(0,100)]
         letter = item('a:L2','litera',(0,0,10,10),poly)
