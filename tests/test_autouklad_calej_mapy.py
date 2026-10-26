@@ -85,6 +85,33 @@ class FullMapTests(unittest.TestCase):
             self.assertTrue(result["raport_silnika"]["skan_calej_mapy"])
             self.assertEqual(src.read_bytes(),original)
 
+    def test_cli_full_map_creates_readable_json_and_map_copy(self):
+        with TemporaryDirectory() as folder:
+            src=Path(folder)/"test.MAP"
+            lines=[
+                ";# Plik danych systemu GEO-MAP",
+                ";# EXT 4000 0 0 100 100",
+                "*5310 255 24 0",":ID[A]",":A1[a]",":A2[SO45|0.1]",
+                "L 2 10 10 0 1 5","L 3 11 11 0 1 5",
+                "P 1 0 0","P 1 100 0","P 1 100 100",
+                "P 1 0 100","P 0 0 0",""]
+            src.write_bytes(onm.tekst_na_maz("\r\n".join(lines)))
+            initial=src.read_bytes()
+            output=Path(folder)/"wynik.json"
+            newmap=Path(folder)/"kopia.MAP"
+            result=diag.main([
+                str(src),"--skala","4000","--cala-mapa",
+                "--maks-trudnych","0","--rundy-dodatkowe","0",
+                "--json",str(output),"--map-kopia",str(newmap)])
+            self.assertEqual(result,0)
+            self.assertEqual(src.read_bytes(),initial)
+            self.assertTrue(output.exists())
+            self.assertTrue(newmap.exists())
+            report=__import__("json").loads(output.read_text(encoding="utf-8"))
+            self.assertTrue(report["tryb_automatyczny_calej_mapy"])
+            self.assertEqual(len(dm.elementy_z_mapy(
+                onm.wczytaj_mape(newmap),4000)[0]),2)
+
     def test_full_scan_does_not_accept_label_selection(self):
         with self.assertRaisesRegex(ValueError,"--cala-mapa"):
             diag.diagnozuj("nieistniejaca.MAP",cala_mapa=True,
