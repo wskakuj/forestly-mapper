@@ -407,3 +407,47 @@ Próba na prawdziwym BYSŁAW:
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_blokady_v4.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_blokady_v4.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_blokady_v4.svg"
 \`\`\`
+
+
+## Etap 6D — dokładne wspólne przeszukiwanie małego skupiska
+
+Raport \`byslaw_4abc_blokady_v4.json\` wykazał 280 problemów przed
+i 267 po przestawieniu czterech napisów: rozwiązał \`4b\`
+i \`4c\`, ale \`4a\` pozostało nierozwiązane. Wszystkie 24
+kandydaty \`4a\` były blokowane przez pierwotny układ \`4b\`,
+a 17 również przez \`4c\`. To silna przesłanka, aby wybierać
+pozycje trzech wydzieleń *równocześnie*, zamiast najpierw
+zatwierdzać dwa łatwiejsze.
+
+Dodano ogólną, deterministyczną próbę dokładną dla **2–3 jawnie
+wybranych wydzieleń**, kiedy \`--maks-grupa\` i \`--limit-grup\`
+zezwalają na objęcie ich wszystkich. Jej etapy:
+- pobierz kandydatów wszystkich wskazanych wydzieleń, odrzuć
+  te blokowane przez nieruchome napisy poza skupiskiem;
+- przeszukaj wspólnie pozostałe konfiguracje z użyciem
+  warunków geometrii, konfliktów prostokątów, wysięgników
+  oraz dolnego ograniczenia kosztu;
+- wybierz układ o najniższym koszcie spośród poprawnych
+  **w ramach aktualnego zbioru kandydatów**;
+- jeżeli brak kompletnej kombinacji, pozostaw układ bez
+  zmian i uruchom dotychczasową optymalizację stopniową.
+
+Ważne: dokładność dotyczy kombinacji **w obrębie 24
+wygenerowanych planów na wydzielenie**, nie nieskończonej
+przestrzeni pozycji. Nie ma gwarancji, że wszystkie trzy uda się
+automatycznie rozmieścić. Wynik trafia do
+\`raport_silnika.wspolna_proba\` wraz z liczbą planów po
+odsianiu przeszkód i statusem \`sukces\`.
+
+Tryb nie uruchamia się automatycznie na wszystkich 268
+wydzieleniach i nie zmienia zachowania samodzielnej diagnostyki
+\`3h\`. Żaden MAP nie jest zapisywany.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_wspolnie_v5.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_wspolnie_v5.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_wspolnie_v5.svg"
+\`\`\`
+
+Po wykonaniu porównaj \`wspolna_proba.sukces\` oraz statusy
+\`NIEROZWIAZANE\` w SVG; same liczby problemów na całej mapie
+nie są wystarczającym potwierdzeniem.
