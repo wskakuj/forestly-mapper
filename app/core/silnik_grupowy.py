@@ -123,17 +123,32 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
 
 
 def _pozycje_zewnetrzne(e, granice, poligony, margines,
-                        max_odleglosc=70.0, limit=14):
+                        max_odleglosc=None, limit=48):
+    """Różnorodne zewnętrzne pozycje w skali rozmiaru napisu.
+
+    Stałe 6.5/15/30/70 m i pięć próbek na krawędzi potrafiły pominąć
+    wszystkie wolne miejsca, mimo że istniały bliskie warianty obok.
+    Badaj pierścienie w wielokrotnościach wysokości etykiety oraz
+    pozycje wokół oryginalnego środka, nie tylko wokół bbox poligonu.
+    """
     old, poly = e["prostokat"], e["poligon"]
     w, h = old[2] - old[0], old[3] - old[1]
     x0, y0, x1, y1 = bbox(poly)
+    distances = sorted({round(max(margines + 3, h * factor), 3)
+                        for factor in (.20, .45, .80, 1.20, 1.80)})
+    if max_odleglosc is not None:
+        distances = [d for d in distances if d <= max_odleglosc]
     points = []
-    for d in (margines + 4, 15, 30, max_odleglosc):
-        for t in (.1, .3, .5, .7, .9):
+    for d in distances:
+        for t in (0, .175, .35, .5, .65, .825, 1):
             x = x0 + (x1 - x0) * t
             y = y0 + (y1 - y0) * t
             points.extend(((x, y0 - h / 2 - d), (x, y1 + h / 2 + d),
                            (x0 - w / 2 - d, y), (x1 + w / 2 + d, y)))
+    ox, oy = srodek(old)
+    for d in distances:
+        points.extend(((ox, oy + d), (ox, oy - d),
+                       (ox + d, oy), (ox - d, oy)))
     # Zachowuj różne kierunki. Same najbliższe punkty mogą wszystkie
     # wypaść po jednej stronie, uniemożliwiając dwa wspólne wysięgniki.
     strony = {"gora": [], "dol": [], "lewo": [], "prawo": []}
