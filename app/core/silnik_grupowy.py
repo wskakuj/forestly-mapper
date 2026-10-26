@@ -290,6 +290,28 @@ def _kolizja_miedzy(first, second, odstep):
     return False
 
 
+def _obwiednia_elementu(e, odstep):
+    r = powieksz(e["prostokat"], max(odstep / 2, .5))
+    w = e.get("wysiegnik")
+    if not w:
+        return r
+    return (min(r[0], w[0][0], w[1][0]),
+            min(r[1], w[0][1], w[1][1]),
+            max(r[2], w[0][0], w[1][0]),
+            max(r[3], w[0][1], w[1][1]))
+
+
+def _obwiednia_planu(plan, odstep):
+    boxes = [_obwiednia_elementu(e, odstep) for e in plan]
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+            max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def _obwiednie_nachodza(a, b):
+    return not (a[2] < b[0] or b[2] < a[0]
+                or a[3] < b[1] or b[3] < a[1])
+
+
 def _sasiedztwo(grupy, klucz, ile=5):
     """Wybieraj grupy faktycznie bliskie geometrycznie, w skali etykiet.
 
@@ -316,7 +338,8 @@ def _sasiedztwo(grupy, klucz, ile=5):
 
 
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
-                szerokosc_wiazki=24, maks_grupa=5, przebiegi=2):
+                szerokosc_wiazki=24, maks_grupa=5, przebiegi=2,
+                limit_grup=None, postep=None):
     """Deterministycznie poprawia ciasne lokalne skupiska, nie psując reszty.
 
     Zwraca nową listę elementów i raport; nigdy nie zmienia wejścia.
@@ -336,15 +359,24 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
         by_group[e["wydzielenie"]].append(dict(e))
     obecne = {e["id"]: dict(e) for e in elementy}
     old = {e["id"]: dict(e) for e in elementy}
-    opcje = {k: opcje_wydzielenia(v, granice, poligony, margines, odstep)
-             for k, v in sorted(by_group.items(), key=lambda kv: str(kv[0]))}
+    # Opcje powstają dopiero dla rzeczywiście dotkniętego skupiska,
+    # nie dla wszystkich 200+ wydzieleń już na starcie.
+    opcje = {}
+
+    def warianty(k):
+        if k not in opcje:
+            opcje[k] = opcje_wydzielenia(
+                by_group[k], granice, poligony, margines, odstep)
+        return opcje[k]
 
     def issues():
         return geo.waliduj_uklad(list(obecne.values()))
 
     przed = issues()
     wykonane = 0
-    for _ in range(max(1, przebiegi)):
+    rozpatrzone = 0
+    pominiete_przez_limit = 0
+    for przebieg in range(max(1, przebiegi)):
         problems = issues()
         touched = {ident for problem in problems for ident in problem["elementy"]}
         touched.update(e["id"] for e in obecne.values()
@@ -353,25 +385,46 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                            powieksz(e["prostokat"], margines), e["poligon"]))
         todo = sorted((k for k, v in by_group.items()
                        if any(e["id"] in touched for e in v)), key=str)
+        if limit_grup is not None:
+            # Limit dotyczy całego wywołania, a nie każdego przebiegu.
+            budget = max(0, limit_grup - rozpatrzone)
+            pominiete_przez_limit += max(0, len(todo) - budget)
+            todo = todo[:budget]
         improved = 0
-        for key in todo:
+        for index, key in enumerate(todo, 1):
+            rozpatrzone += 1
+            if postep is not None:
+                postep({"przebieg": przebieg + 1,
+                       "indeks": index, "liczba_grup": len(todo),
+                       "wydzielenie": key,
+                       "rozpatrzone_lacznie": rozpatrzone})
             selected = _sasiedztwo(by_group, key, max(1, maks_grupa))
-            selected = [k for k in selected if opcje[k]]
+            selected = [k for k in selected if warianty(k)]
             if key not in selected:
                 continue
             fixed = [e for e in obecne.values() if e["wydzielenie"] not in selected]
             # Ograniczona wiązka: zamiast greedy etykieta po etykiecie,
             # wybieramy wspólne warianty całych wydzieleń.
             beam = [(0.0, [])]
-            for k in sorted(selected, key=lambda k: (len(opcje[k]), str(k))):
+            # Szybki test obwiedni pozwala ominąć setki odległych obiektów
+            # bez rezygnacji ze ścisłego walidatora kolizji.
+            fixed_bounds = [(f, _obwiednia_elementu(f, odstep))
+                            for f in fixed]
+            for k in sorted(selected, key=lambda k: (len(warianty(k)), str(k))):
                 next_beam = []
+                approved = []
+                for plan in warianty(k):
+                    area = _obwiednia_planu(plan, odstep)
+                    if any(_obwiednie_nachodza(area, b)
+                           and _kolizja_miedzy(plan, [f], odstep)
+                           for f, b in fixed_bounds):
+                        continue
+                    approved.append((plan, _koszt(plan, old)))
                 for cost, placed in beam:
-                    for plan in opcje[k]:
-                        if any(_kolizja_miedzy(plan, [f], odstep) for f in fixed):
-                            continue
+                    for plan, score in approved:
                         if _kolizja_miedzy(plan, placed, odstep):
                             continue
-                        next_beam.append((cost + _koszt(plan, old), placed + plan))
+                        next_beam.append((cost + score, placed + plan))
                 beam = sorted(next_beam, key=lambda x: x[0])[:szerokosc_wiazki]
                 if not beam:
                     break
@@ -401,8 +454,13 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
     return [obecne[e["id"]] for e in elementy], {
         "przed": dict(_counts(przed)), "po": dict(_counts(po)),
         "przesuniete": changed, "udane_grupy": wykonane,
+        "rozpatrzone_grupy": rozpatrzone,
+        "pominiete_przez_limit": pominiete_przez_limit,
+        "analiza_czesciowa": pominiete_przez_limit > 0,
         "nierozwiazane": po,
-        "ostrzezenie": "Skończona siatka i wiązka: brak rozwiązania nie dowodzi braku miejsca."
+        "ostrzezenie": ("Skończona siatka i wiązka: brak rozwiązania nie dowodzi "
+                        "braku miejsca. Przy aktywnym limicie grup "
+                        "raport dotyczy jedynie częściowej optymalizacji.")
     }
 
 
