@@ -43,6 +43,58 @@ class GeometriaTest(unittest.TestCase):
         self.assertTrue(wysiegniki_koliduja(((0,0),(10,0)), ((5,0),(15,0)),
                                             to_samo_wydzielenie=True))
 
+    def test_wysiegnik_opisu_musi_dotykac_obwodu_wlasnej_litery(self):
+        from app.core.geometria_ukladu import (
+            cel_na_literze, punkt_na_obwodzie_prostokata,
+            wysiegnik_trafia_w_litere)
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        letter = dict(id='a:L2',wydzielenie='a',rodzaj='litera',
+                      prostokat=(40,40,50,50),poligon=poly,wysiegnik=None)
+        desc = dict(id='a:L3',wydzielenie='a',rodzaj='opis',
+                    prostokat=(40,130,60,150),poligon=poly,wysiegnik=None)
+        goal = cel_na_literze(letter['prostokat'],desc['prostokat'])
+        self.assertTrue(punkt_na_obwodzie_prostokata(goal,letter['prostokat']))
+        correct = dict(desc,wysiegnik=((50,130),goal))
+        self.assertTrue(wysiegnik_trafia_w_litere(correct['wysiegnik'],
+                                                  letter['prostokat']))
+        self.assertEqual(waliduj_uklad([letter,correct]), [])
+        # Losowy punkt wewnątrz poligonu nie spełnia nowej reguły.
+        wrong = dict(desc,wysiegnik=((50,130),(35,30)))
+        self.assertIn('cel_opisu_poza_litera',
+                      {e['typ'] for e in waliduj_uklad([letter,wrong])})
+
+    def test_koniec_na_literze_wolno_ale_przejsc_przez_litere_nie(self):
+        from app.core.geometria_ukladu import wysiegnik_trafia_w_litere
+        r = (40,40,50,50)
+        self.assertTrue(wysiegnik_trafia_w_litere(((45,100),(45,50)),r))
+        self.assertFalse(wysiegnik_trafia_w_litere(((45,100),(45,40)),r))
+        self.assertFalse(wysiegnik_trafia_w_litere(((45,100),(45,45)),r))
+
+    def test_dwa_zewnetrzne_napisy_musza_miec_wspolny_cel(self):
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        lit = dict(id='b:L2',wydzielenie='b',rodzaj='litera',
+                   prostokat=(10,120,25,135),poligon=poly,
+                   wysiegnik=((17.5,120),(50,50)))
+        opis = dict(id='b:L3',wydzielenie='b',rodzaj='opis',
+                    prostokat=(60,120,80,140),poligon=poly,
+                    wysiegnik=((70,120),(50,50)))
+        self.assertEqual(waliduj_uklad([lit,opis]), [])
+        altered = dict(opis,wysiegnik=((70,120),(60,55)))
+        self.assertIn('rozne_cele_jednego_wydzielenia',
+                      {e['typ'] for e in waliduj_uklad([lit,altered])})
+
+    def test_opis_nie_moze_przecinac_innych_napisow_aby_dojsc_do_litery(self):
+        poly = [(0,0),(100,0),(100,100),(0,100)]
+        lit = dict(id='a:L2',wydzielenie='a',rodzaj='litera',
+                   prostokat=(40,40,50,50),poligon=poly,wysiegnik=None)
+        desc = dict(id='a:L3',wydzielenie='a',rodzaj='opis',
+                    prostokat=(40,130,60,150),poligon=poly,
+                    wysiegnik=((50,130),(45.2631578947,50)))
+        other = dict(id='c:L2',wydzielenie='c',rodzaj='litera',
+                     prostokat=(42,80,57,98),poligon=poly,wysiegnik=None)
+        self.assertIn('wysiegnik_napis',
+                      {e['typ'] for e in waliduj_uklad([lit,desc,other])})
+
     def test_walidator_wspolny_cel_opis_litera(self):
         poly = [(0,0),(10,0),(10,10),(0,10)]
         opis = dict(id='opis',wydzielenie='a',rodzaj='opis',prostokat=(20,6,24,8),
