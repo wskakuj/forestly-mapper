@@ -540,3 +540,45 @@ walidowane. Brak automatycznego eksportu oryginału MAP.
 py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_estetyka_v7.json"
 py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_estetyka_v7.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_estetyka_v7.svg"
 \`\`\`
+
+
+## Etap V8 — rozszerzenie estetyki po pierwszym sukcesie
+
+W rzeczywistym V7 \`byslaw_4abc_estetyka_v7.json\` wszystkie
+6 prostokątów i wszystkie wysięgniki mają **identyczne współrzędne
+jak V6**. Liczba problemów całej mapy pozostaje 280 → 265,
+a dokładne wspólne przeszukiwanie \`wspolna_proba.sukces=true\`
+zakończyło się już przy 24 wariantach. To pokazało, że sama
+zmiana \`_koszt\` nie może poprawić estetyki, jeśli algorytm
+kończy pracę po pierwszej poprawnej konfiguracji.
+
+Teraz dla **jawnie wskazanej** grupy 2–3 wydzieleń:
+- po pierwszym poprawnym rozwiązaniu obliczana jest maksymalna
+  odległość prostokątów L2/L3 z **dwoma wysięgnikami**
+  w średnich wysokościach napisów;
+- jeśli przekracza 0,75 takiej wysokości, szukamy także w
+  pulach 72 i maksymalnie 112; tylko w tych większych pulach
+  generujemy *dodatkowo* opis tuż obok zewnętrznej litery
+  (lewo, prawo, góra, dół) i weryfikujemy te propozycje
+  tak samo jak inne warianty;
+- przy każdym kroku wybieramy rozwiązanie o **niższym
+  całkowitym koszcie**, nie ostatnie napotkane; brak nowego
+  dobrego układu nie kasuje poprzedniego sukcesu;
+- przy zwartym układzie albo zwykłej diagnostyce pojedynczego
+  wydzielenia czy całej mapy dodatkowa praca się nie uruchamia.
+
+Raport JSON zawiera \`wybrany_limit_planow\`,
+\`koszt_wybranego_ukladu\`, \`maks_odstep_wybranego_ukladu\`,
+a w \`wspolna_proba.proby\` także
+\`koszt_znalezionego_ukladu\` oraz \`poprawiono_najlepszy\`.
+
+**Uwaga:** zero kolizji L2/L3 w obecnym walidatorze **nie
+oznacza pełnej walidacji mapy**: wielokonturowe obiekty,
+dodatkowe granice i przejścia wysięgników przez obiekty
+kartograficzne wciąż wymagają porównania z GEO-MAP.
+Zmiana jest rankingiem/geometrią symulacji i nie eksportuje MAP.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --sprawdz-warianty --json "byslaw_4abc_zwarte_v8.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_zwarte_v8.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_zwarte_v8.svg"
+\`\`\`
