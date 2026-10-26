@@ -655,6 +655,31 @@ def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
                   "ocenione_kompletne_uklady": checked}
 
 
+def _maks_odstep_pary(plan):
+    """Największy odstęp L2–L3 w wysokościach napisów.
+
+    Służy WYŁĄCZNIE do stwierdzenia, czy warto poszerzyć pulę planów
+    po pierwszym bezkolizyjnym sukcesie. Nie zastępuje funkcji kosztu.
+    """
+    grouped = defaultdict(dict)
+    for e in plan:
+        grouped[e["wydzielenie"]][e["rodzaj"]] = e
+    worst = 0.0
+    for pair in grouped.values():
+        if "litera" not in pair or "opis" not in pair:
+            continue
+        letter, desc = pair["litera"], pair["opis"]
+        # Zwłaszcza para z dwoma wysięgnikami powinna być blisko.
+        if not (letter.get("wysiegnik") and desc.get("wysiegnik")):
+            continue
+        height = max(((letter["prostokat"][3] - letter["prostokat"][1])
+                      + (desc["prostokat"][3] - desc["prostokat"][1])) / 2,
+                     geo.EPS)
+        worst = max(worst, odleglosc_boxow(
+            letter["prostokat"], desc["prostokat"]) / height)
+    return worst
+
+
 def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 szerokosc_wiazki=24, maks_grupa=5, przebiegi=2,
                 limit_grup=None, postep=None,
@@ -710,10 +735,12 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                for issue in przed):
             trial_results = []
             selected = None
-            # Zwykły przebieg 24 planów pozostaje najtańszy. Przy jego
-            # niepowodzeniu szukaj blisko oddzielnych konturów oraz
-            # kombinacji dalszych liter i opisów. Tylko dla jawnie
-            # wybranej grupy do trzech wydzieleń — nigdy całej mapy.
+            best_cost, chosen_limit = math.inf, None
+            # Wcześniej kończyliśmy na PIERWSZEJ poprawnej trójce.
+            # To rozwiązało kolizje V6, ale nie poprawiało długich
+            # wysięgników i odległości pary L2/L3 w V7.
+            # Poszerzamy dalej WYŁĄCZNIE przy zbyt rozciągniętych
+            # dwóch zewnętrznych napisach albo braku rozwiązania.
             for width in (24, 72, 112):
                 def candidates(key):
                     if width == 24:
@@ -724,13 +751,28 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
                 attempt, report = _wspolny_plan_dokladny(
                     wybrane, candidates, obecne, old, odstep)
                 report["limit_planow_na_wydzielenie"] = width
-                trial_results.append(report)
                 if attempt is not None:
-                    selected = attempt
+                    candidate_cost = _koszt(attempt, old)
+                    report["koszt_znalezionego_ukladu"] = candidate_cost
+                    report["maks_odstep_pary"] = _maks_odstep_pary(attempt)
+                    if candidate_cost < best_cost - 1e-7:
+                        selected = attempt
+                        best_cost, chosen_limit = candidate_cost, width
+                        report["poprawiono_najlepszy"] = True
+                    else:
+                        report["poprawiono_najlepszy"] = False
+                trial_results.append(report)
+                if selected is not None and _maks_odstep_pary(selected) <= .75:
                     break
             wspolna_proba = dict(trial_results[-1])
+            wspolna_proba["sukces"] = selected is not None
             wspolna_proba["liczba_wydzielen"] = len(wybrane)
             wspolna_proba["proby"] = trial_results
+            wspolna_proba["wybrany_limit_planow"] = chosen_limit
+            wspolna_proba["koszt_wybranego_ukladu"] = (
+                best_cost if selected is not None else None)
+            wspolna_proba["maks_odstep_wybranego_ukladu"] = (
+                _maks_odstep_pary(selected) if selected is not None else None)
             if selected:
                 for e in selected:
                     obecne[e["id"]] = e
