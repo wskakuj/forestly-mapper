@@ -1,5 +1,6 @@
 """Kopie GEO-MAP: zapis tylko zmienionych L2/L3, roundtrip i bezpieczeństwo."""
 import json
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -38,6 +39,7 @@ class ExportTests(unittest.TestCase):
         return {"tryb_automatyczny_calej_mapy":True,
                 "analiza_czesciowa":False,
                 "plik_wejsciowy":str(source),
+                "sha256_zrodla":hashlib.sha256(source.read_bytes()).hexdigest(),
                 "skala":4000,"wysokosc_mm":2.5,
                 "zmiany":[{
                     "id":label["id"],"tekst":label["tekst"],
@@ -94,6 +96,18 @@ class ExportTests(unittest.TestCase):
                 exp.eksportuj_kopie(src,rep,Path(d)/"kopia.MAP")
             self.assertEqual(src.read_bytes(),before)
             self.assertFalse((Path(d)/"kopia.MAP").exists())
+
+    def test_changed_input_hash_refuses_export(self):
+        with TemporaryDirectory() as d:
+            src,orig=self.sample(d)
+            report=self.report(src,orig)
+            raw=src.read_bytes()
+            src.write_bytes(raw+b"\r\n; nieoczekiwana zmiana\r\n")
+            dst=Path(d)/"nieaktualna.MAP"
+            with self.assertRaisesRegex(ValueError,"zmienila sie"):
+                exp.eksportuj_kopie(src,report,dst)
+            self.assertFalse(dst.exists())
+            self.assertEqual(src.read_bytes(),raw+b"\r\n; nieoczekiwana zmiana\r\n")
 
     def test_malformed_leader_is_not_written(self):
         with TemporaryDirectory() as d:
