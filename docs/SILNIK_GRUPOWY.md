@@ -221,3 +221,41 @@ Oczekujemy większej liczby kandydatów wewnętrznych litery,
 ale to nie jest jeszcze potwierdzenie pełnego rozwiązania:
 walidator może odrzucić nadal wszystkie kompletne plany
 z powodu innych napisów, wysięgników albo ograniczonej siatki.
+
+
+## Etap 5A — podgląd wizualny przed/po (SVG)
+
+Podgląd porównawczy jest **wyłącznie do odczytu**: wymaga źródłowego
+GEO-MAP \`.MAP\` i istniejącego raportu \`.json\` z optymalizacji.
+Otwiera oba pliki, odtwarza proponowane pozycje po identyfikatorach L2/L3,
+rysuje je na wspólnym obszarze mapy w dwóch panelach (przed/po)
+i tworzy **nowy** plik \`.svg\`, bez modyfikowania mapy. Nie generuje
+ani nie nadpisuje \`.MAP\`. Plik wynikowy \`.svg\` również nie jest
+nadpisywany — przy ponownym uruchomieniu użyj kolejnej nazwy.
+
+Przykład w katalogu z mapą i raportem etapu 4D:
+
+\`\`\`cmd
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_3h_etap4d.json" --etykiety 3h --svg "byslaw_3h_podglad.svg"
+start "" "byslaw_3h_podglad.svg"
+\`\`\`
+
+Dla wielu sąsiednich wydzieleń można użyć \`--etykiety 4a 4b 4c\`,
+podając raport optymalizacji, który zawiera zmiany dla tych wydzieleń.
+\`--kontekst 60\` poszerza widoczny margines mapy w metrach.
+
+- Kontury \`P 0\` są oddzielane, a otwarte polilinie pozostają otwarte;
+  rysowane są także legalne przeszkody o **dwóch** wierzchołkach.
+- Błękitny prostokąt to litera, pomarańczowy — opis; wysięgnik
+  ma ten sam kolor co napis, z zaznaczonym punktem docelowym.
+  Szare prostokąty to etykiety sąsiednich wydzieleń.
+- Podgląd weryfikuje nazwę źródłowego MAP, liczbę napisów oraz
+  pierwotne współrzędne **zmienionych** napisów; nie sprawdza
+  kryptograficznej zgodności plików.
+- Rysunki są wyłącznie poglądowe: font, jego wymiar i obrót są
+  **szacowane**, a topologia wielokonturowych obiektów jeszcze
+  nie jest kompletna. SVG nie jest formatem GEO-MAP.
+
+**Brama przed eksportem:** sprawdzić układ na SVG, następnie poprawić
+parser wielokonturowy i dopiero potem tworzyć eksperymentalne kopie MAP
+do wizualnej weryfikacji w GEO-MAP. PR nie trafia do main bez testów.
