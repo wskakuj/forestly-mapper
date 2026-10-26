@@ -379,6 +379,34 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                  else outside[a["id"]][:10])
         lit_b = (_rozlozone(outside[b["id"]], 20) if rozszerzone
                  else outside[b["id"]][:10])
+        # Sąsiednie L2/L3 stanowią ważną rodzinę estetyczną.
+        # Dotychczasowy iloczyn dwóch niezależnych list pozycji
+        # pomijał proste układy litera obok opisu (np. 4a).
+        # Generujemy je tylko w szerszym trybie i filtrujemy dokładnie
+        # tak samo jak wszystkie inne warianty.
+        if rozszerzone:
+            letter = next((e for e in (a, b) if e["rodzaj"] == "litera"), None)
+            desc = next((e for e in (a, b) if e["rodzaj"] == "opis"), None)
+            if letter is not None and desc is not None:
+                wl = outside[letter["id"]]
+                dw = desc["prostokat"][2] - desc["prostokat"][0]
+                dh = desc["prostokat"][3] - desc["prostokat"][1]
+                gap = max(odstep + margines, 4.0)
+                for rl in _rozlozone(wl, 35):
+                    lx, ly = srodek(rl)
+                    for rx, ry in (
+                        (rl[0] - gap - dw / 2, ly),
+                        (rl[2] + gap + dw / 2, ly),
+                        (lx, rl[1] - gap - dh / 2),
+                        (lx, rl[3] + gap + dh / 2)):
+                        rd = prost((rx, ry), (dw, dh))
+                        if (granice.przecina(powieksz(rd, margines))
+                                or geo.prostokat_w_poligonie(rd, desc["poligon"])):
+                            continue
+                        for c in sorted(
+                                anchors, key=lambda p: math.dist(p,srodek(rl))
+                                + math.dist(p,srodek(rd)))[:9]:
+                            add([(letter, rl, True), (desc, rd, True)], c)
         for ra in lit_a:
             for rb in lit_b:
                 if geo.prostokaty_koliduja(powieksz(ra, odstep / 2),
