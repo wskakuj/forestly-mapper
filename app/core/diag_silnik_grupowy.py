@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from app.core import diagnostyka_map as dm
+from app.core import kontury_map as km
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
 from app.core import silnik_grupowy as engine
@@ -30,14 +31,17 @@ def _wykryj_wiele_konturow(poligony, lines):
         liczba = sum(
             len(line.split()) >= 2 and line.split()[0:2] == ["P", "0"]
             for line in obj["linie"])
-        if liczba <= 1:
+        model = km.model_wydzielenia(obj["linie"])
+        if len(model["kontury"]) <= 1 and liczba <= 1:
             continue
         def atr(key):
             prefix = ":" + key + "["
             return next((line[len(prefix):-1] for line in obj["linie"]
                          if line.startswith(prefix) and line.endswith("]")), "")
         out.append({"id": atr("ID"), "litera": atr("A1"),
-                    "liczba_sekcji_p0": liczba})
+                    "liczba_sekcji_p0": liczba,
+                    "liczba_konturow": len(model["kontury"]),
+                    "kompletne": model["kompletne"]})
     return out
 
 
@@ -91,13 +95,14 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     scale = skala if skala is not None else dm.skala_naglowka(mapa)
     przed, ostrzezenia = dm.elementy_z_mapy(mapa, scale, wysokosc_mm)
     obiekty = uk.wszystkie_poligony(mapa)
-    # Każdy obiekt ma geometrię linii; obrys zamknięty tylko wtedy,
-    # gdy GEO-MAP jawnie kończy go punktem początkowym. Nie domykaj
-    # otwartych *4214 (to tworzyło nieistniejącą granicę przez 3h).
-    wszystkie = [{"punkty": o["punkty"],
-                  "zamkniety": o["punkty"][0] == o["punkty"][-1]}
-                 for o in obiekty]
+    # Każde P 0 zamyka bieżący pierścień. Nie twórz sztucznych
+    # połączeń między pierścieniami ani z otwartą polilinią.
+    wszystkie = [fragment for o in obiekty
+                 for fragment in km.fragmenty_z_linii(o["linie"])]
     wielokonturowe = _wykryj_wiele_konturow(obiekty, mapa["lines"])
+    niedomkniete = [o for o in obiekty
+                    if mapa["lines"][o["start"]].startswith("*5310 ")
+                    and not km.model_wydzielenia(o["linie"])["kompletne"]]
     nazwy = {e["wydzielenie"]: e["tekst"] for e in przed
              if e["rodzaj"] == "litera"}
     szukane = {x.strip().casefold() for x in etykiety if x.strip()}
@@ -144,13 +149,20 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     return {
         "plik_wejsciowy": str(path),
         "skala": scale, "wysokosc_mm": wysokosc_mm,
-        "liczba_napisow": len(przed), "liczba_poligonow": len(wszystkie),
+        "liczba_napisow": len(przed), "liczba_poligonow": len(obiekty),
+        "liczba_fragmentow_granic": len(wszystkie),
         "liczba_wydzielen": len({e["wydzielenie"] for e in przed}),
         "wybrane_etykiety": sorted(szukane),
         "wybrane_uuid": sorted(znalezione),
         "diagnostyka_wariantow": statystyki_wariantow,
         "wydzielenia_wielokonturowe": wielokonturowe,
-        "pelna_walidacja_topologii": not wielokonturowe,
+        "wielokonturowe_w_modelu": [e["litera"] for e in wielokonturowe
+                                  if e["liczba_konturow"] > 1 and e["kompletne"]],
+        "niepelne_kontury_5310": len(niedomkniete),
+        # Nawet zamkniete kontury nie dowodza zgodnosci dziur i pol
+        # powierzchni z GEO-MAP. Pierwszy etap opiera sie na parzystosci.
+        "pelna_walidacja_topologii": not wielokonturowe and not niedomkniete,
+        "model_konturow": "osobne_pierscienie_parzystosc_niepotwierdzona_GEO_MAP",
         "przed": dict(Counter(e["typ"] for e in wczesniejsze)),
         "po": dict(Counter(e["typ"] for e in pozniejsze)),
         "zmienione_napisy": len(zmiany),
@@ -228,8 +240,10 @@ def main(argv=None):
             info["plany_bez_kolizji_z_innymi_etykietami"]))
     print("Nierozwiazane problemy:", result["liczba_nierozwiazanych"])
     if result["wydzielenia_wielokonturowe"]:
-        print("UWAGA: wykryto %d wydzielen wielokonturowych; obecny parser"
-              " nie waliduje ich topologii:" % len(result["wydzielenia_wielokonturowe"]))
+        print("UWAGA: wykryto %d obiektow z wieloma P0;"
+              " liczba rzeczywistych konturow jest teraz rozpoznawana."
+              " Semantyka dziur wymaga weryfikacji w GEO-MAP:"
+              % len(result["wydzielenia_wielokonturowe"]))
         print(", ".join(e["litera"] or e["id"]
                         for e in result["wydzielenia_wielokonturowe"][:20]))
     if result["analiza_czesciowa"]:
