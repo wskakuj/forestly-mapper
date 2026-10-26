@@ -160,73 +160,79 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
 
 def _pozycje_zewnetrzne(e, granice, poligony, margines,
                         max_odleglosc=None, limit=48):
-    """Różnorodne zewnętrzne pozycje w skali rozmiaru napisu.
+    """Zewnętrzne kandydaty wokół całego obszaru i osobnych konturów.
 
-    Stałe 6.5/15/30/70 m i pięć próbek na krawędzi potrafiły pominąć
-    wszystkie wolne miejsca, mimo że istniały bliskie warianty obok.
-    Badaj pierścienie w wielokrotnościach wysokości etykiety oraz
-    pozycje wokół oryginalnego środka, nie tylko wokół bbox poligonu.
+    Rozłączne części GEO-MAP nie powinny tracić bliskich pozycji przez
+    przeszukiwanie wyłącznie globalnego bbox. Kolejki po stronie i
+    konturze zachowują różnorodność bez zmian dla 1-konturowych map.
     """
     old, poly = e["prostokat"], e["poligon"]
     w, h = old[2] - old[0], old[3] - old[1]
-    x0, y0, x1, y1 = bbox(poly)
     distances = sorted({round(max(margines + 3, h * factor), 3)
                         for factor in (.20, .45, .80, 1.20, 1.80)})
     if max_odleglosc is not None:
         distances = [d for d in distances if d <= max_odleglosc]
-    points = []
-    for d in distances:
-        for t in (0, .175, .35, .5, .65, .825, 1):
-            x = x0 + (x1 - x0) * t
-            y = y0 + (y1 - y0) * t
-            points.extend(((x, y0 - h / 2 - d), (x, y1 + h / 2 + d),
-                           (x0 - w / 2 - d, y), (x1 + w / 2 + d, y)))
-    ox, oy = srodek(old)
-    for d in distances:
-        points.extend(((ox, oy + d), (ox, oy - d),
-                       (ox + d, oy), (ox - d, oy)))
-    # Zachowuj różne kierunki. Same najbliższe punkty mogą wszystkie
-    # wypaść po jednej stronie, uniemożliwiając dwa wspólne wysięgniki.
-    strony = {"gora": [], "dol": [], "lewo": [], "prawo": []}
-    for p in points:
-        if p[1] > y1 + h / 2:
-            strony["gora"].append(p)
-        elif p[1] < y0 - h / 2:
-            strony["dol"].append(p)
-        elif p[0] < x0 - w / 2:
-            strony["lewo"].append(p)
-        else:
-            strony["prawo"].append(p)
-    for lista in strony.values():
-        lista.sort(key=lambda p: math.dist(p, srodek(old)))
-    # Round-robin: reprezentacja każdej strony, bez uprzywilejowania
-    # orientacji konkretnej mapy.
-    kolejka = []
-    for i in range(max(map(len, strony.values()))):
-        for strona in ("gora", "dol", "lewo", "prawo"):
-            if i < len(strony[strona]):
-                kolejka.append(strony[strona][i])
+    boxes = [bbox(poly)]
+    if isinstance(poly, dict) and len(geo.kontury_poligonu(poly)) > 1:
+        for ring in geo.kontury_poligonu(poly):
+            bounds = bbox(ring)
+            if bounds not in boxes:
+                boxes.append(bounds)
+    queues = []
+    for index, (x0, y0, x1, y1) in enumerate(boxes):
+        points = []
+        for d in distances:
+            for t in (0, .175, .35, .5, .65, .825, 1):
+                x = x0 + (x1 - x0) * t
+                y = y0 + (y1 - y0) * t
+                points.extend(((x, y0 - h / 2 - d),
+                               (x, y1 + h / 2 + d),
+                               (x0 - w / 2 - d, y),
+                               (x1 + w / 2 + d, y)))
+        if index == 0:
+            ox, oy = srodek(old)
+            for d in distances:
+                points.extend(((ox, oy + d), (ox, oy - d),
+                               (ox + d, oy), (ox - d, oy)))
+        strony = {"gora": [], "dol": [], "lewo": [], "prawo": []}
+        for p in points:
+            if p[1] > y1 + h / 2:
+                strony["gora"].append(p)
+            elif p[1] < y0 - h / 2:
+                strony["dol"].append(p)
+            elif p[0] < x0 - w / 2:
+                strony["lewo"].append(p)
+            else:
+                strony["prawo"].append(p)
+        for candidates in strony.values():
+            candidates.sort(key=lambda p: math.dist(p, srodek(old)))
+        ordered = []
+        for i in range(max(map(len, strony.values()), default=0)):
+            for side in ("gora", "dol", "lewo", "prawo"):
+                if i < len(strony[side]):
+                    ordered.append(strony[side][i])
+        queues.append(ordered)
+    # Przeplataj obrys globalny i poszczególne kontury. Wszystkie
+    # pozycje i tak muszą przejść walidację granic oraz własności.
     seen = set()
-    for p in kolejka:
-        r = prost(p, (w, h))
-        key = tuple(round(v, 3) for v in r)
-        if key in seen:
-            continue
-        seen.add(key)
-        padded = powieksz(r, margines)
-        if granice.przecina(padded):
-            continue
-        # Zewnętrzny napis musi pozostawać poza WŁASNYM wydzieleniem.
-        # Wolne wnętrze obcego poligonu jest dopuszczalne, o ile prostokąt
-        # nie przecina żadnej granicy ani innych etykiet. Stary zakaz
-        # dowolnego obcego wnętrza usuwał wszystkie warianty np. w gęstych
-        # skupiskach przy wspólnych granicach.
-        if geo.punkt_w_poligonie(p, poly):
-            continue
-        yield r
-        limit -= 1
-        if not limit:
-            return
+    for index in range(max(map(len, queues), default=0)):
+        for queue in queues:
+            if index >= len(queue):
+                continue
+            p = queue[index]
+            r = prost(p, (w, h))
+            key = tuple(round(v, 3) for v in r)
+            if key in seen:
+                continue
+            seen.add(key)
+            if granice.przecina(powieksz(r, margines)):
+                continue
+            if geo.punkt_w_poligonie(p, poly):
+                continue
+            yield r
+            limit -= 1
+            if not limit:
+                return
 
 
 def _cele(poly, n=7):
