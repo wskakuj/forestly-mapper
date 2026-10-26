@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from app.core import geometria_ukladu as geo
 from app.core import silnik_grupowy as engine
 
@@ -51,6 +52,31 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(both[0][0]['wysiegnik'][1],
                          both[0][1]['wysiegnik'][1])
         self.assertEqual(geo.waliduj_uklad(both[0]), [])
+
+    def test_alone_can_be_fixed_when_neighbor_alternatives_are_blocked(self):
+        """A correct neighbor must not force an impossible joint rearrangement."""
+        pa = [(0,0),(80,0),(80,80),(0,80)]
+        pb = [(0,80),(80,80),(80,160),(0,160)]
+        a = item('a:L2','litera',(20,20,30,30),pa)
+        desc = item('a:L3','opis',(20,20,44,45),pa)
+        b = item('b:L2','litera',(30,105,45,119),pb)
+        real = engine.opcje_wydzielenia
+
+        def candidates(group, *args, **kwargs):
+            if group[0]['wydzielenie'] == 'b':
+                # A deliberately incompatible alternative for the
+                # already correct neighbour; its ORIGINAL placement is fine.
+                return [[dict(group[0], prostokat=(-5,-5,85,75),
+                              wysiegnik=((40,75),(40,115)))]]
+            return real(group, *args, **kwargs)
+
+        with patch.object(engine,'opcje_wydzielenia',side_effect=candidates):
+            result, report = engine.optymalizuj(
+                [a,desc,b],wszystkie_poligony=[pa,pb],
+                maks_grupa=2,przebiegi=1)
+        self.assertEqual(geo.waliduj_uklad(result), [])
+        self.assertEqual(result[2]['prostokat'],b['prostokat'])
+        self.assertGreaterEqual(report['udane_grupy'],1)
 
     def test_group_neighbors_do_not_include_distant_polygons(self):
         a = [(0,0),(30,0),(30,30),(0,30)]
