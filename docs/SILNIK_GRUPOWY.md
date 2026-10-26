@@ -626,3 +626,57 @@ py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_przeciecia
 To nadal wynik tylko diagnostyczny; źródłowe MAP i INI nie
 są zapisywane ani zmieniane. \`pelna_walidacja_topologii=false\`
 pozostaje prawidłowym, ostrożnym oznaczeniem.
+
+
+## Etap V10 — miękka preferencja omijania obcych linii GEO-MAP
+
+Raport V9 \`byslaw_4abc_przeciecia_v9.json\` potwierdza
+**dwa dodatkowe punkty przecięcia**: wysięgnik litery \`4a\`
+współrzędne (630301.90, 432710.05), opis \`4a\`
+(630296.52, 432695.16). W obu punktach występują typy
+obiektów \`*5214\` i \`*5216\`. Inne wysięgniki
+\`4b\` i \`4c\` przecinają wyłącznie granicę własnego
+wydzielenia (przecięcie dozwolone).
+Na źródłowym MAP: \`*5214\` ma m.in. \`:A2[01 Bysław]\`,
+a \`*5216\` \`:A2[209]\`. Nie ma przesłanek, by
+na tym etapie ustalać automatyczny bezwzględny zakaz
+przecinania wszystkich takich obiektów.
+
+Zastosowano osobny przestrzenny indeks odcinków
+\`app/core/przeciecia_map.py\`, używany przez diagnostykę
+i opcjonalny scorer. Punkt na wielu warstwach liczy
+się tylko raz. **Własna granica \`*5310\` nie podlega
+karze**, zaś przecięcie innych linii lub nakładanie się
+odcinków ma koszt zależny od parametru.
+
+Nowy opcjonalny parametr CLI:
+\`--kara-przeciecia 25\` — zwiększa łączny koszt
+każdego planu o **25 punktów za dodatkowy fizyczny punkt
+przecięcia** (oraz za nakładający się odcinek). Domyślnie
+parametr wynosi \`0\`, a więc wcześniejszy układ
+V9 pozostaje niezmieniony. Kara jest wyłącznie miękka,
+nie zmienia reguł \`geo.waliduj_uklad\`.
+
+Gdy kara jest dodatnia, uwzględnia się ją już przy
+**generowaniu i rankingu wariantów** \`opcje_wydzielenia\`,
+wspólnym solverze \`_wspolny_plan_dokladny\`,
+koszcie wybieranym pomiędzy przebiegami 24/72/112
+oraz w wiązkowym fallbacku. Jeśli zwarty plan nadal
+ma naliczoną karę, wolno przeszukać szerszą pulę
+112 zamiast kończyć przedwcześnie na 72. W raporcie:
+\`kara_za_przeciecie\`, \`koszt_kary_wybranego_ukladu\`,
+\`liczba_dodatkowych_przeciec_wysiegnikow\` i
+\`przeciecia_wysiegnikow_obiekty_mapy\`.
+
+**Bezpieczeństwo:** twarde zasady wysięgników pozostają
+bez zmian; geometria oryginalnego MAP nie jest modyfikowana.
+Jeśli zbiór kandydatów nie zawiera rozwiązania bez
+dodatkowych przecięć, solver może nadal wybrać
+wariant z przecinającymi liniami (miękka preferencja),
+zamiast ukrywać problem. Pełna topologia nadal nie jest
+zweryfikowana i należy porównać rezultat w GEO-MAP.
+
+\`\`\`cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 4a 4b 4c --maks-grupa 3 --wiazka 16 --przebiegi 2 --kara-przeciecia 25 --sprawdz-warianty --json "byslaw_4abc_miekkie_przeciecia_v10.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_4abc_miekkie_przeciecia_v10.json" --etykiety 4a 4b 4c --svg "byslaw_4abc_miekkie_przeciecia_v10.svg"
+\`\`\`
