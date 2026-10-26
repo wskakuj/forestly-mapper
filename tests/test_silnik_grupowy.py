@@ -61,6 +61,24 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(after[0]['wysiegnik'][1],after[1]['wysiegnik'][1])
         self.assertEqual(geo.waliduj_uklad(after), [])
 
+    def test_progress_callback_and_partial_scan(self):
+        pa = [(0,0),(100,0),(100,100),(0,100)]
+        pb = [(200,0),(300,0),(300,100),(200,100)]
+        items = [
+            item('a:L2','litera',(20,20,30,30),pa),
+            item('a:L3','opis',(20,20,40,40),pa),
+            item('b:L2','litera',(220,20,230,30),pb),
+            item('b:L3','opis',(220,20,240,40),pb),
+        ]
+        messages = []
+        _, result = engine.optymalizuj(
+            items, wszystkie_poligony=[pa,pb], limit_grup=1,
+            przebiegi=1, postep=messages.append)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(result["rozpatrzone_grupy"], 1)
+        self.assertTrue(result["analiza_czesciowa"])
+        self.assertGreaterEqual(result["pominiete_przez_limit"], 1)
+
     def test_deterministic(self):
         poly = [(0,0),(90,0),(90,90),(0,90)]
         items = [item('a:L2','litera',(20,20,32,32),poly),
