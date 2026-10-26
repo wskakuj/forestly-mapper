@@ -562,6 +562,20 @@ def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
                           "ocenione_kompletne_uklady": 0}
         valid.append((key, available))
     valid.sort(key=lambda pair: (len(pair[1]), str(pair[0])))
+    # Oddzielnie raportuj, czy dany duet ma choć jedną zgodną
+    # kombinację. Gdy trzy pary są zgodne, ale brak pełnej trójki,
+    # problemem jest wspólna konfiguracja, nie brak miejsca dla par.
+    compatible_pairs = []
+    for i, (first_key, first_plans) in enumerate(valid):
+        for second_key, second_plans in valid[i + 1:]:
+            count = sum(
+                1 for _, left, left_bounds in first_plans
+                  for _, right, right_bounds in second_plans
+                  if (not _obwiednie_nachodza(left_bounds, right_bounds)
+                      or not _kolizja_miedzy(left, right, odstep)))
+            compatible_pairs.append({
+                "wydzielenia": [str(first_key), str(second_key)],
+                "zgodne_pary_planow": count})
     remaining = [0.0] * (len(valid) + 1)
     for i in range(len(valid) - 1, -1, -1):
         remaining[i] = remaining[i + 1] + valid[i][1][0][0]
@@ -589,6 +603,7 @@ def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep):
     visit(0, [], [], 0.0)
     return best, {"sukces": best is not None,
                   "liczba_planow_po_otoczeniu": counts,
+                  "zgodne_pary_planow": compatible_pairs,
                   "ocenione_kompletne_uklady": checked}
 
 
@@ -645,9 +660,29 @@ def optymalizuj(elementy, *, wszystkie_poligony=None, margines=2.5, odstep=2.5,
         if any(set(issue["elementy"]) &
                {e["id"] for e in elementy if e["wydzielenie"] in wybrane}
                for issue in przed):
-            selected, wspolna_proba = _wspolny_plan_dokladny(
-                wybrane, warianty, obecne, old, odstep)
+            trial_results = []
+            selected = None
+            # Zwykły przebieg 24 planów pozostaje najtańszy. Przy jego
+            # niepowodzeniu szukaj blisko oddzielnych konturów oraz
+            # kombinacji dalszych liter i opisów. Tylko dla jawnie
+            # wybranej grupy do trzech wydzieleń — nigdy całej mapy.
+            for width in (24, 72, 112):
+                def candidates(key):
+                    if width == 24:
+                        return warianty(key)
+                    return opcje_wydzielenia(
+                        by_group[key], granice, poligony, margines,
+                        odstep, limit=width)
+                attempt, report = _wspolny_plan_dokladny(
+                    wybrane, candidates, obecne, old, odstep)
+                report["limit_planow_na_wydzielenie"] = width
+                trial_results.append(report)
+                if attempt is not None:
+                    selected = attempt
+                    break
+            wspolna_proba = dict(trial_results[-1])
             wspolna_proba["liczba_wydzielen"] = len(wybrane)
+            wspolna_proba["proby"] = trial_results
             if selected:
                 for e in selected:
                     obecne[e["id"]] = e
