@@ -75,6 +75,60 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual([c[1] for c in contours], [True, True, False])
         self.assertEqual(contours[-1][0], [(40.0, 0.0), (50.0, 0.0)])
 
+    def test_real_multipart_4abc_preview_and_orphan_p0(self):
+        """Regresja: '4a' i '4c' mają dwa kontury, nie jeden ani trzy."""
+        with TemporaryDirectory() as d:
+            source = Path(d) / "multiring.MAP"
+            lines = [";# Plik danych systemu GEO-MAP",
+                     ";# EXT 4000 0 0 400 300"]
+            for code, uuid, x0, multipart in (
+                ("4a", "a-uuid", 0, True),
+                ("4b", "b-uuid", 140, False),
+                ("4c", "c-uuid", 280, True)):
+                lines += [
+                    "*5310 255 24 0", ":ID[" + uuid + "]",
+                    ":A1[" + code + "]", ":A2[SO40|0.1]",
+                    "L 2 0 0 0 1 5", "L 3 0 0 0 1 5",
+                    f"P 1 {x0} 0", f"P 1 {x0+45} 0",
+                    f"P 1 {x0+45} 90", f"P 1 {x0} 90",
+                    f"P 0 {x0} 0",
+                ]
+                if multipart:
+                    lines += [
+                        f"P 1 {x0+60} 0", f"P 1 {x0+100} 0",
+                        f"P 1 {x0+100} 90", f"P 1 {x0+60} 90",
+                        f"P 0 {x0+60} 0", "P 0 0 0",
+                    ]
+            lines.append("")
+            source.write_bytes(onm.tekst_na_maz("\r\n".join(lines)))
+            report = self.report(d, source)
+            original = source.read_bytes()
+            rendered = preview.podglad_svg(source, report,
+                                           ["4a", "4b", "4c"])
+            self.assertIn("4a / 4b / 4c", rendered)
+            self.assertIn("SO40|0.1", rendered)
+            self.assertGreaterEqual(rendered.count("<path "), 10)
+            self.assertNotIn("nan", rendered.lower())
+            self.assertEqual(original, source.read_bytes())
+            # SVG CLI also works and is safe, rather than throwing due to
+            # iterating a multipart dict as if it were XY tuples.
+            path = Path(d) / "test.svg"
+            self.assertEqual(preview.main([
+                str(source), str(report), "--etykiety",
+                "4a", "4b", "4c", "--svg", str(path)
+            ]), 0)
+            self.assertIn("4c", path.read_text(encoding="utf-8"))
+
+    def test_orphan_p0_keeps_true_number_of_contours(self):
+        lines = [
+            "P 1 0 0", "P 1 10 0", "P 1 10 10", "P 0 0 0",
+            "P 1 30 0", "P 1 40 0", "P 1 40 10", "P 0 30 0",
+            "P 0 0 0",
+        ]
+        fragments = preview._kontury(lines)
+        self.assertEqual(len(fragments), 2)
+        self.assertTrue(all(closed for _, closed in fragments))
+
     def test_html_escape_and_changed_leader(self):
         with TemporaryDirectory() as d:
             src = self.source(d, "3&h")
