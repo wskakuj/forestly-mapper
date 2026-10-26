@@ -264,7 +264,8 @@ class EngineTests(unittest.TestCase):
                            side_effect=lambda *a,**kw:iter(())),
               patch.object(engine,'_pozycje_zewnetrzne',
                            side_effect=positions),
-              patch.object(engine,'_cele',return_value=iter([(50,50)])),
+              patch.object(engine,'_cele',
+                           side_effect=lambda *a,**kw:iter([(50,50)])),
               patch.object(engine,'_poprawne',return_value=True)):
             plain=engine.opcje_wydzielenia(
                 [label],engine.Granice([]),[],limit=25)
