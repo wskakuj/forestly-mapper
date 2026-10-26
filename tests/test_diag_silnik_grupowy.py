@@ -59,6 +59,21 @@ class ReadOnlyMapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Nie znaleziono"):
                 diag.diagnozuj(src, skala=4000, etykiety=["3h"])
 
+    def test_warns_about_multicontour_polygons(self):
+        lines = [
+            "*5310 255 24 0", ":ID[MULTI]", ":A1[test]",
+            "P 1 0 0", "P 1 20 0", "P 1 20 20",
+            "P 0 0 0",
+            "P 1 25 0", "P 1 35 0", "P 1 35 20",
+            "P 0 25 0",
+        ]
+        from app.core import uklad_opisow as uk
+        objects = uk.wszystkie_poligony({"lines": lines})
+        warnings = diag._wykryj_wiele_konturow(objects, lines)
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["id"], "MULTI")
+        self.assertEqual(warnings[0]["liczba_sekcji_p0"], 2)
+
     def test_rejects_map_as_report_target(self):
         with TemporaryDirectory() as root:
             src = Path(root) / "test.MAP"
