@@ -160,6 +160,46 @@ def prostokaty_koliduja(r1, r2, eps=EPS):
     return min(r1[2], r2[2]) > max(r1[0], r2[0]) + eps and min(r1[3], r2[3]) > max(r1[1], r2[1]) + eps
 
 
+def punkt_na_obwodzie_prostokata(p, r, eps=EPS):
+    """Punkt dokładnie na krawędzi napisu; wnętrze jest niedozwolone."""
+    x, y = p
+    x0, y0, x1, y1 = r
+    if not (x0 - eps <= x <= x1 + eps
+            and y0 - eps <= y <= y1 + eps):
+        return False
+    return (abs(x - x0) <= eps or abs(x - x1) <= eps
+            or abs(y - y0) <= eps or abs(y - y1) <= eps)
+
+
+def cel_na_literze(prost_litery, prost_opisu):
+    """Przecięcie promienia litera -> opis z obwodem prostokąta litery.
+
+    Cel jest na zewnętrznej krawędzi litery od strony opisu, nie
+    wewnątrz glifu. Prosty odcinek kończy się na tym celu.
+    """
+    x0, y0, x1, y1 = prost_litery
+    lx, ly = ((x0 + x1) / 2, (y0 + y1) / 2)
+    ox, oy = ((prost_opisu[0] + prost_opisu[2]) / 2,
+              (prost_opisu[1] + prost_opisu[3]) / 2)
+    dx, dy = ox - lx, oy - ly
+    if abs(dx) <= EPS and abs(dy) <= EPS:
+        return ((x0 + x1) / 2, y1)
+    half_x, half_y = (x1 - x0) / 2, (y1 - y0) / 2
+    t = min(half_x / abs(dx) if abs(dx) > EPS else math.inf,
+            half_y / abs(dy) if abs(dy) > EPS else math.inf)
+    return lx + t * dx, ly + t * dy
+
+
+def wysiegnik_trafia_w_litere(w, prost_litery):
+    """Prawidłowy kontakt: WYŁĄCZNIE koniec na obwodzie litery.
+
+    Przecięcie jej otwartego wnętrza w dowolnym fragmencie jest błędem.
+    """
+    return (bool(w) and punkt_na_obwodzie_prostokata(w[1], prost_litery)
+            and not odcinek_przecina_prostokat(
+                *w, prost_litery, wnetrze=True))
+
+
 def waliduj_uklad(elementy):
     """Walidacja bez modyfikowania mapy; lista problemów z ID elementów.
 
@@ -202,6 +242,15 @@ def waliduj_uklad(elementy):
         if len(z_w) > 1 and any(not _blisko(z_w[0]['wysiegnik'][1],
                                              e['wysiegnik'][1]) for e in z_w[1:]):
             blad('rozne_cele_jednego_wydzielenia', *(e['id'] for e in z_w))
+        lit = next((e for e in grupa if e['rodzaj'] == 'litera'), None)
+        opis = next((e for e in grupa if e['rodzaj'] == 'opis'), None)
+        if (lit and opis
+                and prostokat_w_poligonie(lit['prostokat'], lit['poligon'])
+                and not prostokat_w_poligonie(opis['prostokat'], opis['poligon'])
+                and opis.get('wysiegnik')
+                and not wysiegnik_trafia_w_litere(opis['wysiegnik'],
+                                                  lit['prostokat'])):
+            blad('cel_opisu_poza_litera', opis['id'], lit['id'])
 
     for i, e1 in enumerate(elementy):
         for e2 in elementy[i+1:]:
@@ -210,7 +259,16 @@ def waliduj_uklad(elementy):
             for zrodlo, cel in ((e1, e2), (e2, e1)):
                 w = zrodlo.get('wysiegnik')
                 if w and odcinek_przecina_prostokat(*w, cel['prostokat']):
-                    blad('wysiegnik_napis', zrodlo['id'], cel['id'])
+                    # Dozwolony tylko styk KOŃCA opisu z obwodem
+                    # własnej litery pozostającej wewnątrz poligonu.
+                    dopuszczony = (zrodlo['rodzaj'] == 'opis'
+                        and cel['rodzaj'] == 'litera'
+                        and zrodlo['wydzielenie'] == cel['wydzielenie']
+                        and prostokat_w_poligonie(cel['prostokat'],
+                                                  cel['poligon'])
+                        and wysiegnik_trafia_w_litere(w, cel['prostokat']))
+                    if not dopuszczony:
+                        blad('wysiegnik_napis', zrodlo['id'], cel['id'])
             w1, w2 = e1.get('wysiegnik'), e2.get('wysiegnik')
             if w1 and w2 and wysiegniki_koliduja(
                     w1, w2, to_samo_wydzielenie=e1['wydzielenie'] == e2['wydzielenie']):
