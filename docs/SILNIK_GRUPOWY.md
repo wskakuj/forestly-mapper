@@ -259,3 +259,42 @@ podając raport optymalizacji, który zawiera zmiany dla tych wydzieleń.
 **Brama przed eksportem:** sprawdzić układ na SVG, następnie poprawić
 parser wielokonturowy i dopiero potem tworzyć eksperymentalne kopie MAP
 do wizualnej weryfikacji w GEO-MAP. PR nie trafia do main bez testów.
+
+
+## Etap 5B — twarde cele wysięgników L2/L3
+
+Zasady generatora **i** walidatora:
+- oba napisy wewnątrz wydzielenia: nie generuj wysięgników;
+- litera L2 wewnątrz, opis L3 na zewnątrz: opis musi mieć jeden
+  prosty wysięgnik, który kończy się **na obwodzie prostokąta własnej
+  litery**, po stronie zewnętrznego opisu; jedyny dopuszczalny kontakt
+  z literą to jego punkt końcowy (linia nie przechodzi przez literę);
+- litera L2 i opis L3 na zewnątrz: oba wysięgniki muszą wskazywać
+  **dokładnie ten sam punkt wewnątrz własnego poligonu**;
+- litera na zewnątrz, opis wewnątrz (nieobjęty nową szczególną zasadą):
+  obowiązują dotychczasowe wymagania dla pojedynczego wysięgnika.
+
+Przekroczenie któregokolwiek napisu przez wysięgnik nadal jest błędem;
+walidator dopuszcza wyłącznie wskazane dotknięcie końca linii do
+własnej litery i nie zmienia reguł dotyczących innych opisów,
+wydzieleń ani przecinania odcinków. Zmieniono selekcję kandydatów:
+dla opisu na zewnątrz i litery wewnątrz nie losujemy już punktów
+w poligonie, a obliczamy kierunek z prostokąta litery do opisu i
+jego przecięcie z obwodem litery. Obie etykiety na zewnątrz nadal
+używają jednego wspólnego punktu docelowego.
+
+**Walidacja regresyjna:** unit tests w GitHub Actions na Windows i
+Ubuntu; obowiązkowy dodatkowy test na rzeczywistym 3h jest tylko
+symulacją w pamięci i nie zmienia pliku MAP. Wystarczy zaktualizować
+gałąź i wykonać:
+
+\`\`\`cmd
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --etykiety 3h --maks-grupa 3 --wiazka 12 --przebiegi 1 --sprawdz-warianty --json "byslaw_3h_litera_cel.json"
+py -m app.core.podglad_ukladu "01_BYSŁAW_z_opisami.MAP" "byslaw_3h_litera_cel.json" --etykiety 3h --svg "byslaw_3h_litera_cel.svg"
+\`\`\`
+
+Plik SVG pokazuje odcinek do obwodu litery, a nie do jej środka,
+oraz otaczające napisy. To **nie jest jeszcze dokładna wizualizacja
+czcionek GEO-MAP**. Starszy \`proba_ukladu_v3.py\` zostaje jako
+historyczny prototyp, nie jest źródłem docelowej reguły eksportu.
