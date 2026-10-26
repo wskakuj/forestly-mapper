@@ -1,4 +1,4 @@
-# Silnik grupowy — etap 1
+# Silnik grupowy — etap 4B (diagnostyka)
 
 Nowy moduł `app/core/silnik_grupowy.py` jest niezależny od interfejsu oraz zapisu MAP.
 Przyjmuje elementy w formacie `diagnostyka_map.elementy_z_mapy` i zwraca
@@ -6,17 +6,42 @@ Przyjmuje elementy w formacie `diagnostyka_map.elementy_z_mapy` i zwraca
 `wszystkie_poligony` powinien obejmować **wszystkie** granice mapy,
 również obiekty bez etykiet.
 
-## Jak sprawdzić
+Algorytm łączy:
+- propozycje wewnętrzne z marginesem od granicy;
+- zewnętrzne propozycje z czterech stron poligonu;
+- prosty wysięgnik L2/L3, wspólny cel obu wysięgników wydzielenia;
+- ograniczone przeszukiwanie grup bliskich wydzieleń (beam search);
+- walidację wzajemnych przecięć, odrzucone kombinacje nie są zapisywane.
+
+## Uruchomienie testów
 
 ```cmd
 py -m unittest discover -s tests -v
 ```
 
-Na tym etapie **nie podłączamy silnika do zapisu MAP ani produkcyjnego GUI**.
-Algorytm używa ograniczonej siatki pozycji i beam search, grupuje sąsiadów
-oraz preferuje etykiety wewnętrzne. Gdy brakuje bezpiecznej konfiguracji,
-zwraca `nierozwiazane` i nie twierdzi, że mapa jest poprawna.
-Wymiary tekstu są szacowane, a nie mierzone w GEO-MAP.
+Ten sam zestaw jest uruchamiany przez GitHub Actions na Windows i Ubuntu
+dla PR (po synchronizacji nowej gałęzi).
 
-Kolejny etap: zweryfikować wydzielenia 3h, 3g i 3r na kopii BYSŁAW;
-następnie dodać atomowy eksporter L2/L3 z walidacją i testami round-trip.
+## Diagnostyka BYSŁAW — całkowicie bez zapisu mapy
+
+```cmd
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --json "byslaw_silnik_grupowy.json"
+```
+
+`diag_silnik_grupowy.py` otwiera mapę tylko do odczytu i wykonuje symulację
+położeń w pamięci. Do pliku zapisuje wyłącznie raport `.json`; odmawia
+użycia pliku `.MAP` jako celu raportu. Raport zawiera statystyki problemów
+sprzed i po symulacji, listę nowych pozycji oraz nierozwiązane kolizje.
+Dla dużej mapy przeszukiwanie może być długie. Nie są dostępne jeszcze wyniki
+porównania z ręcznie ułożonym wzorcem.
+
+## Ograniczenia i kolejne etapy
+
+**Nie podłączamy jeszcze silnika do produkcyjnego GUI i nie generujemy MAP.**
+Nie ma gwarancji znalezienia rozwiązania ani optymalności: siatka jest skończona,
+liczba kandydatów i szerokość wiązki ograniczona, a font GEO-MAP szacowany.
+Pomyślny wynik testów geometrycznych nie zastępuje kontroli w GEO-MAP.
+
+Kolejny etap: analiza diagnostyki `3h`, `3g`, `3r` i całej mapy BYSŁAW,
+poprawa ograniczonych przypadków, następnie transakcyjny eksporter L2/L3
+z testami round-trip i bez nadpisywania oryginału.
