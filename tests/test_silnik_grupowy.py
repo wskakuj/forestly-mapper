@@ -41,6 +41,22 @@ class EngineTests(unittest.TestCase):
         self.assertLessEqual(len(plans),24)
         self.assertTrue(all(geo.waliduj_uklad(p) == [] for p in plans))
 
+    def test_exterior_label_may_occupy_clear_interior_of_neighbor(self):
+        """No border intersection; neighboring polygon interior is not forbidden."""
+        own = [(0,0),(18,0),(18,18),(0,18)]
+        neighbor = [(-200,-200),(200,-200),(200,-5),(-200,-5)]
+        e = item('a:L3','opis',(0,0,20,20),own)
+        borders = engine.Granice([own,neighbor])
+        candidates = list(engine._pozycje_zewnetrzne(
+            e,borders,[own,neighbor],2.5,limit=50))
+        self.assertTrue(candidates)
+        self.assertTrue(any(
+            geo.punkt_w_poligonie(engine.srodek(r), neighbor,
+                                  granica=False)
+            and not borders.przecina(engine.powieksz(r,2.5))
+            and not geo.punkt_w_poligonie(engine.srodek(r),own)
+            for r in candidates))
+
     def test_common_anchor_for_two_exterior_labels(self):
         poly = [(0,0),(18,0),(18,18),(0,18)]
         a = item('a:L2','litera',(4,4,24,24),poly)
