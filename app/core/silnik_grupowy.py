@@ -270,8 +270,20 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         return []
 
     def add(boxes, target=None):
-        plan = [_wariant(e, r, target if external else None)
-                for e, r, external in boxes]
+        # Jeśli litera jest w poligonie, zewnętrzny opis musi kończyć
+        # linię na obwodzie TEJ litery, nie w dowolnym punkcie wydzielenia.
+        inner_letter = next(
+            (r for e, r, external in boxes
+             if e['rodzaj'] == 'litera' and not external), None)
+        plan = []
+        for e, r, external in boxes:
+            goal = None
+            if external:
+                if e['rodzaj'] == 'opis' and inner_letter is not None:
+                    goal = geo.cel_na_literze(inner_letter, r)
+                else:
+                    goal = target
+            plan.append(_wariant(e, r, goal))
         if _poprawne(plan, odstep):
             # Klasy wariantow musza zachowac reprezentacje w ograniczonej
             # wiazce: bez tego najlepsze 24 pozycje czesto byly tylko
@@ -294,9 +306,16 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                 add([(a, ra, False), (b, rb, False)])
         for e, f in ((a, b), (b, a)):
             for ri in inside[e["id"]][:7]:
-                for ro in outside[f["id"]][:12]:
-                    for c in sorted(anchors, key=lambda p: math.dist(p, srodek(ro)))[:7]:
-                        add([(e, ri, False), (f, ro, True)], c)
+                # Dla opisu wskazującego literę cel jest determinowany
+                # przez obwód litery, więc nie generuj niepotrzebnych
+                # wariantów z losowymi punktami w poligonie.
+                for ro in outside[f["id"]][:24]:
+                    if e["rodzaj"] == "litera" and f["rodzaj"] == "opis":
+                        add([(e, ri, False), (f, ro, True)])
+                    else:
+                        for c in sorted(
+                                anchors, key=lambda p: math.dist(p, srodek(ro)))[:7]:
+                            add([(e, ri, False), (f, ro, True)], c)
         for ra in outside[a["id"]][:10]:
             for rb in outside[b["id"]][:10]:
                 if geo.prostokaty_koliduja(powieksz(ra, odstep / 2),
