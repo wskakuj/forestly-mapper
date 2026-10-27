@@ -137,7 +137,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               kara_wielokrotnej_granicy=0.0, cala_mapa=False,
               maks_trudnych=24, rundy_dodatkowe=2,
               maks_estetyka=36, maks_par_estetyka=12,
-              priorytety_estetyka=(), bazowy_json=None):
+              priorytety_estetyka=(), bazowy_json=None,
+              chronione_estetyka=()):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     if bazowy_json and not cala_mapa:
         raise ValueError('--bazowy-json wymaga --cala-mapa')
@@ -195,7 +196,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             poprzedni, wszystkie, nazwy=nazwy,
             ocena_dodatkowa=dodatkowy_koszt,
             maks_grup=maks_estetyka, maks_par=maks_par_estetyka,
-            priorytety=priorytety_estetyka, postep=pokaz)
+            priorytety=priorytety_estetyka,
+            chronione=chronione_estetyka, postep=pokaz)
         rap_przed=geo.waliduj_uklad(przed)
         rap_po=geo.waliduj_uklad(po)
         raport={
@@ -221,6 +223,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_estetyka=maks_estetyka,
             maks_par_estetyka=maks_par_estetyka,
             priorytety_estetyka=priorytety_estetyka,
+            chronione_estetyka=chronione_estetyka,
             postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
     else:
         po, raport = engine.optymalizuj(
@@ -315,6 +318,8 @@ def main(argv=None):
                    help='Ile nierozwiazanych grup sprobowac dodatkowo (domyslnie 24)')
     p.add_argument('--rundy-dodatkowe',type=int,default=2,
                    help='Liczba dodatkowych rund dla trudnych grup (domyslnie 2)')
+    p.add_argument('--chron-estetyka',nargs='+',default=(),
+                   help='Wydzielenia zaakceptowane wizualnie — nie przesuwaj ich podczas estetyki, nawet przy optymalizacji sasiadow')
     p.add_argument('--priorytety-estetyka',nargs='+',default=(),
                    help='Nazwy A1 szczegolnie brzydkich wydzielen do poprawienia jako pierwsze')
     p.add_argument('--maks-estetyka',type=int,default=36,
@@ -403,6 +408,7 @@ def main(argv=None):
             maks_estetyka=args.maks_estetyka,
             maks_par_estetyka=args.maks_par_estetyka,
             priorytety_estetyka=args.priorytety_estetyka,
+            chronione_estetyka=args.chron_estetyka,
             bazowy_json=args.bazowy_json)
     except ValueError as exc:
         p.error(str(exc))
