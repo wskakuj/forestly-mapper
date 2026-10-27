@@ -114,8 +114,6 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                      if ocena_dodatkowa else 0.0)
         if penalty_new>penalty_old+1e-6:
             return False
-        if cost_new>=cost_old-1e-5:
-            return False
         updates={e["id"]:e for e in changed}
         if any(e["id"] not in current for e in changed):
             return False
@@ -123,6 +121,11 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         problems=geo.waliduj_uklad(proposed)
         after_keys={_issue_key(i) for i in problems}
         if not after_keys.issubset(old_keys):
+            return False
+        # Samo naprawienie kolizji jest zawsze korzystne,
+        # nawet jeśli wymaga wydłużenia linii. Gdy lista błędów
+        # się nie zmniejsza, wymagamy poprawy estetyki.
+        if not (after_keys<old_keys or cost_new<cost_old-1e-5):
             return False
         for e in changed:
             current[e["id"]]=dict(e)
@@ -145,7 +148,12 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         ordered=sorted(plans,key=lambda plan:(
             _quality(plan),ocena_dodatkowa(plan) if ocena_dodatkowa else 0))
         for plan in ordered:
-            if _quality(plan)>=_quality(group)-1e-5:
+            # Przy nierozwiązanych kolizjach (np. 6s) nawet plan
+            # droższy wizualnie może być lepszy od obecnego.
+            if (_quality(plan)>=_quality(group)-1e-5
+                    and not any(
+                        set(issue["elementy"]) &
+                        {e["id"] for e in group} for issue in all_errors)):
                 break
             if any(engine._kolizja_miedzy(plan,[f],2.5) for f in fixed):
                 continue
