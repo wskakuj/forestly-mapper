@@ -98,6 +98,39 @@ class AestheticTests(unittest.TestCase):
         self.assertIsNone(out[1]["wysiegnik"])
         self.assertEqual(report["chronione_wydzielenia"],["4c"])
 
+    def test_unresolved_overlap_without_leaders_reaches_joint_solver(self):
+        # Regresja rzeczywistego 6s: oba napisy mają wysięgnik=None,
+        # ale jeden zasłania drugi. Musimy próbować również sąsiadów.
+        poly_a=[(0,0),(100,0),(100,100),(0,100)]
+        poly_b=[(100,0),(200,0),(200,100),(100,100)]
+        letter={"id":"a:L2","wydzielenie":"a","rodzaj":"litera",
+                "tekst":"6s","prostokat":(20,20,40,40),
+                "poligon":poly_a,"wysiegnik":None}
+        description=dict(letter,id="a:L3",rodzaj="opis",
+                         tekst="halizna|0.2")
+        other={"id":"b:L2","wydzielenie":"b","rodzaj":"litera",
+               "tekst":"6t","prostokat":(130,20,150,40),
+               "poligon":poly_b,"wysiegnik":None}
+        self.assertTrue(any(p["typ"]=="napis_napis" for p in
+                            geo.waliduj_uklad([letter,description,other])))
+        def options(group,*args,**kwargs):
+            return [list(group)]
+        def neighborhood(groups,key,ile=5):
+            return [key,"b" if key=="a" else "a"]
+        with (patch.object(aesthetic.engine,"opcje_wydzielenia",
+                           side_effect=options),
+              patch.object(aesthetic.engine,"_sasiedztwo",
+                           side_effect=neighborhood),
+              patch.object(aesthetic.engine,"_wspolny_plan_dokladny",
+                           return_value=(None,{})) as joint):
+            out,report=aesthetic.dopracuj(
+                [letter,description,other],[poly_a,poly_b],
+                nazwy={"a":"6s","b":"6t"},priorytety=["6s"],
+                maks_grup=1,maks_par=1)
+        self.assertEqual(report["proby_par_sasiadow"],1)
+        self.assertEqual(joint.call_count,1)
+        self.assertEqual(out[0]["prostokat"],letter["prostokat"])
+
     def test_zero_budget_leaves_source_exact(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         label_a=label("a",(10,10,30,30),poly)
