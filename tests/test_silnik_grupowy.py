@@ -19,6 +19,39 @@ class EngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.optymalizuj([e,e])
 
+    def test_joint_interiors_cover_both_sides_of_large_irregular_parcel(self):
+        # Obie etykiety pierwotnie leżą daleko poza obrębem poligonu.
+        # Muszą być generowane jako wspólna, zwarta para w całej
+        # dostępnej przestrzeni (nie tylko 18 najbliższych próbek).
+        poly=[(0,0),(240,0),(240,100),(0,100)]
+        a=item('a:L2','litera',(-120,20,-100,40),poly)
+        b=item('a:L3','opis',(-100,10,-60,60),poly)
+        index=engine.Granice([poly])
+        pairs=list(engine._pary_wewnatrz(a,b,index,2.5,2.5,limit=40))
+        self.assertTrue(pairs)
+        self.assertLessEqual(len(pairs),40)
+        self.assertTrue(any(engine.srodek(ra)[0]>140 for ra,rb in pairs))
+        self.assertTrue(all(
+            geo.prostokat_w_poligonie(ra,poly)
+            and geo.prostokat_w_poligonie(rb,poly)
+            and not geo.prostokaty_koliduja(ra,rb)
+            for ra,rb in pairs))
+
+    def test_absolute_visual_cost_can_outrank_nearer_external_labels(self):
+        poly=[(0,0),(140,0),(140,140),(0,140)]
+        a=item('a:L2','litera',(60,60,75,80),poly)
+        b=item('a:L3','opis',(160,60,190,105),poly)
+        def aesthetics(plan):
+            return 1000*sum(bool(e["wysiegnik"]) for e in plan)
+        plans=engine.opcje_wydzielenia(
+            [a,b],engine.Granice([poly]),[poly],limit=72,
+            ocena_planu=aesthetics)
+        self.assertTrue(plans)
+        self.assertTrue(any(all(e["wysiegnik"] is None for e in plan)
+                            for plan in plans))
+        # Ranking estetyczny powinien zachować zwarty wewnętrzny plan.
+        self.assertLess(min(aesthetics(p) for p in plans),1000)
+
     def test_internal_pair_no_overlap(self):
         poly = [(0,0),(100,0),(100,100),(0,100)]
         a = item('a:L2','litera',(45,45,55,55),poly)
