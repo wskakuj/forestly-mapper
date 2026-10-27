@@ -193,9 +193,26 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     successful_pairs=0
     pair_attempts=0
     duo_seen=set()
-    for key in target:
+    attempts_per_key=Counter()
+    # Przed kolejnym skracaniem poprawnych wysięgników przejdź
+    # do wydzieleń wciąż z błędami, od największej liczby błędów.
+    # Wcześniej 24 próby mogły zostać wyczerpane na pierwszym
+    # jednym/dwóch wydzieleniach.
+    remaining_count=Counter(
+        current[ident]["wydzielenie"]
+        for issue in all_errors
+        for ident in issue["elementy"] if ident in current)
+    repair_first=sorted(target,key=lambda k:(
+        -remaining_count[k],target.index(k)))
+    bad_count=sum(bool(remaining_count[k]) for k in repair_first)
+    # Przy kilku trudnych wydzieleniach gwarantujemy każdemu
+    # dostęp do solvera, zachowując łączny limit prób.
+    per_group_limit=max(1,min(4,maks_par//max(1,bad_count)))
+    for key in repair_first:
         if pair_attempts>=maks_par:
             break
+        if attempts_per_key[key]>=per_group_limit:
+            continue
         group=pair_group([key])
         # Kolizja bez wysięgnika też jest problemem! Wcześniej
         # pomijaliśmy tutaj np. 6s, gdzie litera zasłania własny opis,
@@ -227,15 +244,14 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         neighbors=list(dict.fromkeys(
             ranked_blockers+geometry))
         for neighbor in (n for n in neighbors if n not in protected):
-            if pair_attempts>=maks_par:
-                break
-            if pair_attempts>=maks_par:
+            if pair_attempts>=maks_par or attempts_per_key[key]>=per_group_limit:
                 break
             duo=frozenset((key,neighbor))
             if duo in duo_seen:
                 continue
             duo_seen.add(duo)
             pair_attempts+=1
+            attempts_per_key[key]+=1
             attempts+=1
             variants={k:engine.opcje_wydzielenia(
                 pair_group([k]),granice,poligony,limit=72,
@@ -268,6 +284,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         "przyjete_poprawki":accepted,
         "ulepszone_pary_sasiadow":successful_pairs,
         "proby_par_sasiadow":pair_attempts,
+        "proby_par_na_wydzielenie":{
+            str(names.get(k,k)):int(attempts_per_key[k])
+            for k in repair_first if attempts_per_key[k]},
         "zmodyfikowane_wydzielenia":sorted(set(improved_labels)),
         "przed":before,"po":_metrics(result),
         "problemy_po":len(all_errors),
