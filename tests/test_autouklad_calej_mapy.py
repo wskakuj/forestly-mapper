@@ -114,6 +114,42 @@ class FullMapTests(unittest.TestCase):
             self.assertEqual(len(dm.elementy_z_mapy(
                 onm.wczytaj_mape(newmap),4000)[0]),2)
 
+    def test_resume_from_json_reuses_prior_placements_without_rerun(self):
+        import hashlib
+        import json
+        with TemporaryDirectory() as folder:
+            src=Path(folder)/"map.MAP"
+            lines=[
+                ";# Plik danych systemu GEO-MAP",
+                ";# EXT 4000 0 0 100 100",
+                "*5310 255 24 0",":ID[A]",":A1[a]",":A2[SO45|0.1]",
+                "L 2 10 10 0 1 5","L 3 11 11 0 1 5",
+                "P 1 0 0","P 1 100 0","P 1 100 100",
+                "P 1 0 100","P 0 0 0",""]
+            src.write_bytes(onm.tekst_na_maz("\r\n".join(lines)))
+            raw=src.read_bytes()
+            rep=diag.diagnozuj(src,skala=4000,cala_mapa=True,
+                               maks_estetyka=0,
+                               maks_trudnych=0,rundy_dodatkowe=0)
+            base=Path(folder)/"base.json"
+            base.write_text(json.dumps(rep,ensure_ascii=False),encoding="utf-8")
+            with patch.object(auto.engine,"optymalizuj",
+                              side_effect=AssertionError("Nie wolno liczyc od poczatku")):
+                next_report=diag.diagnozuj(
+                    src,skala=4000,cala_mapa=True,
+                    bazowy_json=base,
+                    maks_estetyka=0)
+            self.assertEqual(next_report["liczba_nierozwiazanych"],
+                             rep["liczba_nierozwiazanych"])
+            self.assertEqual(next_report["raport_silnika"]["raport_bazowy"],str(base))
+            self.assertEqual(next_report["zmiany"],rep["zmiany"])
+            self.assertEqual(src.read_bytes(),raw)
+            base_data=json.loads(base.read_text(encoding="utf-8"))
+            base_data["sha256_zrodla"]="0"*64
+            base.write_text(json.dumps(base_data),encoding="utf-8")
+            with self.assertRaisesRegex(ValueError,"SHA-256"):
+                diag.diagnozuj(src,skala=4000,cala_mapa=True,bazowy_json=base)
+
     def test_full_scan_does_not_accept_label_selection(self):
         with self.assertRaisesRegex(ValueError,"--cala-mapa"):
             diag.diagnozuj("nieistniejaca.MAP",cala_mapa=True,
