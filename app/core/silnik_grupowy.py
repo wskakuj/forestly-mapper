@@ -116,7 +116,8 @@ def _wariant(e, r, cel=None):
     return {**e, "prostokat": r, "wysiegnik": lider(r, cel) if cel else None}
 
 
-def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
+def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9,
+                      roznorodne=False, referencje=()):
     box, poly = e["prostokat"], e["poligon"]
     w, h = box[2] - box[0], box[3] - box[1]
     bounds = bbox(poly)
@@ -144,6 +145,7 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
                             (a[1] + b[1] + c[1]) / 3))
     centers.sort(key=lambda c: math.dist(c, srodek(box)))
     found = set()
+    valid = []
     for c in centers:
         r = prost(c, (w, h))
         key = tuple(round(v, 3) for v in r)
@@ -152,10 +154,48 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9):
         found.add(key)
         if (geo.prostokat_w_poligonie(powieksz(r, margines), poly)
                 and not granice.przecina(powieksz(r, margines))):
-            yield r
-            limit -= 1
-            if not limit:
+            if not roznorodne:
+                yield r
+                limit -= 1
+                if not limit:
+                    return
+            else:
+                valid.append(r)
+    if not roznorodne or not valid:
+        return
+    # W estetyce proponuj nie tylko okolice STAREJ pozycji.
+    # Dzięki referencjom litera może przysunąć się do opisu
+    # leżącego na zewnątrz i wyraźnie skrócić wysięgnik.
+    ordered = []
+    used = set()
+    def take(items, maximum):
+        count = 0
+        for rect in items:
+            key=tuple(round(v,3) for v in rect)
+            if key in used:
+                continue
+            used.add(key)
+            ordered.append(rect)
+            count += 1
+            if count >= maximum:
                 return
+    nearest=sorted(valid,key=lambda r:(
+        math.dist(srodek(r),srodek(box)),r))
+    take(nearest,max(2,limit//3))
+    if referencje:
+        for point in referencje:
+            towards=sorted(valid,key=lambda r:(
+                math.dist(srodek(r),point),r))
+            take(towards,max(2,limit//3))
+    # Pozostałe miejsca rozrzucaj po wszystkich częściach konturu.
+    for rect in _rozlozone(valid, len(valid)):
+        if len(ordered)>=limit:
+            break
+        key=tuple(round(v,3) for v in rect)
+        if key not in used:
+            used.add(key)
+            ordered.append(rect)
+    yield from ordered[:limit]
 
 
 def _pozycje_zewnetrzne(e, granice, poligony, margines,
@@ -453,7 +493,10 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
     inside = {e["id"]: list(_pozycje_wewnatrz(
         e, granice, margines,
         n=(11 if rozszerzone else 9),
-        limit=(18 if rozszerzone else 9))) for e in grupa}
+        limit=(24 if rozszerzone else 9),
+        roznorodne=rozszerzone,
+        referencje=tuple(srodek(f["prostokat"]) for f in grupa
+                         if f["id"]!=e["id"]))) for e in grupa}
     outside = {e["id"]: list(_pozycje_zewnetrzne(
         e, granice, poligony, margines,
         limit=(96 if rozszerzone else 48))) for e in grupa}
