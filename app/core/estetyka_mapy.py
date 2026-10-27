@@ -163,22 +163,23 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     # Wspólne przestawianie dwóch sąsiadów umożliwia m.in.
     # przejęcie miejsca litery drugiego wydzielenia przez opis.
     successful_pairs=0
+    pair_attempts=0
     duo_seen=set()
     for key in target:
-        if successful_pairs>=maks_par:
+        if pair_attempts>=maks_par:
             break
         group=pair_group([key])
         if not any(e.get("wysiegnik") for e in group):
             continue
         neighbors=engine._sasiedztwo(grouped,key,ile=7)[1:]
         for neighbor in neighbors[:3]:
-            if successful_pairs>=maks_par:
+            if pair_attempts>=maks_par:
                 break
             duo=frozenset((key,neighbor))
             if duo in duo_seen:
                 continue
             duo_seen.add(duo)
-            pairs=pair_group(duo)
+            pair_attempts+=1
             attempts+=1
             variants={k:engine.opcje_wydzielenia(
                 pair_group([k]),granice,poligony,limit=48,
@@ -200,6 +201,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         "proby_wariantow":attempts,
         "przyjete_poprawki":accepted,
         "ulepszone_pary_sasiadow":successful_pairs,
+        "proby_par_sasiadow":pair_attempts,
         "zmodyfikowane_wydzielenia":sorted(set(improved_labels)),
         "przed":before,"po":_metrics(result),
         "problemy_po":len(all_errors),
