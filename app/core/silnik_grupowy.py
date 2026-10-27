@@ -487,9 +487,49 @@ def _pary_wewnatrz(a, b, granice, margines, odstep, limit=64):
     yield from _rozlozone(candidates,limit)
 
 
+def _zewnetrzne_ratunkowe(e, granice, margines, limit=64):
+    """Rozszerzony, ograniczony przegląd miejsc dla trudnych opisów."""
+    poly=e["poligon"]
+    x0,y0,x1,y1=bbox(poly)
+    w=e["prostokat"][2]-e["prostokat"][0]
+    h=e["prostokat"][3]-e["prostokat"][1]
+    scale=max(5.0,min(max(w,h),180.0))
+    queues={k:[] for k in ("dol","gora","lewo","prawo")}
+    seen=set()
+    for factor in (.12,.25,.40,.65,1.,1.6,2.4):
+        d=max(margines+3,scale*factor)
+        for t in (-.2,0,.125,.25,.375,.5,.625,.75,.875,1,1.2):
+            x=x0+t*(x1-x0)
+            y=y0+t*(y1-y0)
+            for side,center in (
+                ("dol",(x,y0-h/2-d)),
+                ("gora",(x,y1+h/2+d)),
+                ("lewo",(x0-w/2-d,y)),
+                ("prawo",(x1+w/2+d,y))):
+                r=prost(center,(w,h))
+                key=tuple(round(v,3) for v in r)
+                if key in seen:continue
+                seen.add(key)
+                if (geo.prostokat_w_poligonie(r,poly) or
+                        granice.przecina(powieksz(r,margines))):
+                    continue
+                queues[side].append(r)
+    for side in queues:
+        queues[side].sort(key=lambda r:(
+            odleglosc_boxow(r,bbox(poly)),
+            math.dist(srodek(r),srodek(e["prostokat"])),r))
+    count=0
+    for i in range(max(map(len,queues.values()),default=0)):
+        for side in ("dol","gora","lewo","prawo"):
+            if i>=len(queues[side]):continue
+            yield queues[side][i]
+            count+=1
+            if count>=limit:return
+
+
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                       odstep=2.5, limit=24, ocena_dodatkowa=None,
-                      ocena_planu=None):
+                      ocena_planu=None, ratunek=False):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
     grupa = sorted(grupa, key=lambda e: e["id"])
     # Dla etapu estetyki, gdy limit >24, próbkuj głębiej wewnątrz.
@@ -604,6 +644,58 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                 for c in _cele_ocenione(
                         anchors,[(a,ra),(b,rb)],ocena_dodatkowa,limit=9):
                     add([(a, ra, True), (b, rb, True)], c)
+
+    if ratunek:
+        # Zachowaj dokładnie już dobrą pozycję L2, również gdy
+        # w standardowej siatce zabrakło dla niej miejsca.
+        for e in grupa:
+            old=e["prostokat"]
+            if (geo.prostokat_w_poligonie(
+                    powieksz(old,margines),e["poligon"])
+                    and not granice.przecina(powieksz(old,margines))
+                    and old not in inside[e["id"]]):
+                inside[e["id"]].insert(0,old)
+        far={e["id"]:list(_zewnetrzne_ratunkowe(
+            e,granice,margines,limit=64)) for e in grupa}
+        if len(grupa)==1:
+            e=grupa[0]
+            for ro in far[e["id"]]:
+                for goal in _cele_ocenione(
+                        anchors,[(e,ro)],ocena_dodatkowa,limit=5):
+                    add([(e,ro,True)],goal)
+        elif len(grupa)==2:
+            a,b=grupa
+            for inner,ext in ((a,b),(b,a)):
+                for ri in inside[inner["id"]][:12]:
+                    for ro in far[ext["id"]][:48]:
+                        if inner["rodzaj"]=="litera":
+                            add([(inner,ri,False),(ext,ro,True)])
+                        else:
+                            for goal in _cele_ocenione(
+                                    anchors,[(ext,ro)],
+                                    ocena_dodatkowa,limit=4):
+                                add([(inner,ri,False),(ext,ro,True)],goal)
+            letter=next((e for e in grupa if e["rodzaj"]=="litera"),None)
+            desc=next((e for e in grupa if e["rodzaj"]=="opis"),None)
+            if letter is not None and desc is not None:
+                lw=letter["prostokat"][2]-letter["prostokat"][0]
+                lh=letter["prostokat"][3]-letter["prostokat"][1]
+                gap=max(odstep+margines,4.0)
+                for rd in far[desc["id"]][:48]:
+                    cx,cy=srodek(rd)
+                    for center in (
+                        (rd[0]-gap-lw/2,cy),(rd[2]+gap+lw/2,cy),
+                        (cx,rd[1]-gap-lh/2),(cx,rd[3]+gap+lh/2)):
+                        rl=prost(center,(lw,lh))
+                        if (granice.przecina(powieksz(rl,margines))
+                                or geo.prostokat_w_poligonie(
+                                    rl,letter["poligon"])):
+                            continue
+                        for target in _cele_ocenione(
+                                anchors,[(letter,rl),(desc,rd)],
+                                ocena_dodatkowa,limit=5):
+                            add([(letter,rl,True),
+                                 (desc,rd,True)],target)
 
     unique = {}
     original = {e["id"]: e for e in grupa}
