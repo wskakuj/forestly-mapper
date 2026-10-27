@@ -197,7 +197,13 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         if pair_attempts>=maks_par:
             break
         group=pair_group([key])
-        if not any(e.get("wysiegnik") for e in group):
+        # Kolizja bez wysięgnika też jest problemem! Wcześniej
+        # pomijaliśmy tutaj np. 6s, gdzie litera zasłania własny opis,
+        # chociaż w pojedynkę nie da się naprawić tej pary.
+        unresolved_ids={ident for issue in all_errors
+                        for ident in issue["elementy"]}
+        needs_repair=any(e["id"] in unresolved_ids for e in group)
+        if not needs_repair and not any(e.get("wysiegnik") for e in group):
             continue
         # Szukaj sąsiadów blokujących KONKRETNE lepsze warianty.
         # Same poligony mogą być odległe, lecz opis jednego z nich
