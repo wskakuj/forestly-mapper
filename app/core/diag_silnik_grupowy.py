@@ -134,7 +134,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               sprawdz_warianty=False, kara_przeciecia=0.0,
               kara_wielokrotnej_granicy=0.0, cala_mapa=False,
               maks_trudnych=24, rundy_dodatkowe=2,
-              maks_estetyka=36, maks_par_estetyka=12):
+              maks_estetyka=36, maks_par_estetyka=12,
+              priorytety_estetyka=()):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     if cala_mapa and etykiety:
         raise ValueError('--cala-mapa nie moze byc laczona z --etykiety')
@@ -191,6 +192,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_trudnych=maks_trudnych, rundy_dodatkowe=rundy_dodatkowe,
             maks_estetyka=maks_estetyka,
             maks_par_estetyka=maks_par_estetyka,
+            priorytety_estetyka=priorytety_estetyka,
             postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
     else:
         po, raport = engine.optymalizuj(
@@ -284,6 +286,8 @@ def main(argv=None):
                    help='Ile nierozwiazanych grup sprobowac dodatkowo (domyslnie 24)')
     p.add_argument('--rundy-dodatkowe',type=int,default=2,
                    help='Liczba dodatkowych rund dla trudnych grup (domyslnie 2)')
+    p.add_argument('--priorytety-estetyka',nargs='+',default=(),
+                   help='Nazwy A1 szczegolnie brzydkich wydzielen do poprawienia jako pierwsze')
     p.add_argument('--maks-estetyka',type=int,default=36,
                    help='Ile grup dopracowac wizualnie po naprawie kolizji (0 = pomin)')
     p.add_argument('--maks-par-estetyka',type=int,default=12,
@@ -364,7 +368,8 @@ def main(argv=None):
             maks_trudnych=args.maks_trudnych,
             rundy_dodatkowe=args.rundy_dodatkowe,
             maks_estetyka=args.maks_estetyka,
-            maks_par_estetyka=args.maks_par_estetyka)
+            maks_par_estetyka=args.maks_par_estetyka,
+            priorytety_estetyka=args.priorytety_estetyka)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
