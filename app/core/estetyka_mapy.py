@@ -63,14 +63,14 @@ def _metrics(elements):
 
 def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             maks_grup=36, maks_par=12, postep=None,
-            priorytety=(), chronione=()):
+            priorytety=(), chronione=(), maks_trojek=6):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
     napisu oraz wydzielenia nadal błędne. Najpierw lokalne próby,
     potem ograniczona liczba zmian sąsiadujących par.
     """
-    if maks_grup<0 or maks_par<0:
+    if maks_grup<0 or maks_par<0 or maks_trojek<0:
         raise ValueError("Budzet estetyki nie moze byc ujemny")
     current={e["id"]:dict(e) for e in elementy}
     all_errors=geo.waliduj_uklad(list(current.values()))
@@ -281,6 +281,100 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                 successful_pairs+=1
                 break
 
+    # Dokładne rozwiązanie trzech faktycznie blokujących się wydzieleń.
+    # Solver par nie mógł rozwiązać wariantu, który wymaga jednocześnie
+    # zwolnienia przestrzeni przez DWA inne wydzielenia.
+    triple_attempts=0
+    successful_triples=0
+    triple_per_group=Counter()
+    triple_skip_counts=Counter()
+    seen_triples=set()
+    for key in repair_first:
+        if triple_attempts>=maks_trojek:
+            break
+        bad_ids={ident for issue in all_errors for ident in issue["elementy"]}
+        own=pair_group([key])
+        if not any(e["id"] in bad_ids for e in own):
+            continue
+        proposals=engine.opcje_wydzielenia(
+            own,granice,poligony,limit=72,
+            ocena_dodatkowa=ocena_dodatkowa,
+            ocena_planu=_quality,ratunek=True)
+        situations=engine._blokady_planow(proposals,current,key,2.5)
+        current_penalty=(ocena_dodatkowa(own)
+                         if ocena_dodatkowa else 0.0)
+        nearby=engine._sasiedztwo(grouped,key,ile=10)[1:]
+        choices=[]
+        for blockers,proposal in situations:
+            if blockers & protected:
+                triple_skip_counts["blokada_chroniona"]+=1
+                continue
+            if len(blockers)>2:
+                triple_skip_counts["wiecej_niz_dwa_blokujace"]+=1
+                continue
+            if (ocena_dodatkowa is not None and
+                    ocena_dodatkowa(proposal)>current_penalty+1e-6):
+                triple_skip_counts["wzrost_kary_GIS"]+=1
+                continue
+            others=list(sorted(blockers,key=str))
+            if len(others)==1:
+                companion=next((n for n in nearby
+                                if n!=others[0] and n not in protected),
+                               None)
+                if companion is not None:
+                    others.append(companion)
+            if len(others)!=2 or any(n not in grouped for n in others):
+                triple_skip_counts["brak_podwojnego_sasiedztwa"]+=1
+                continue
+            trio=frozenset((key,others[0],others[1]))
+            if trio in seen_triples:
+                continue
+            # Najpierw warianty blokowane przez najmniej sąsiadów,
+            # a potem najkrótsze wysięgniki.
+            choices.append((len(blockers),_quality(proposal),
+                            tuple(sorted(trio,key=str)),trio,proposal))
+        choices.sort(key=lambda x:(x[0],x[1],x[2]))
+        for _,_,_,trio,favored in choices:
+            if triple_attempts>=maks_trojek:
+                break
+            if trio in seen_triples:
+                continue
+            seen_triples.add(trio)
+            triple_attempts+=1
+            triple_per_group[str(names.get(key,key))]+=1
+            if postep:
+                postep({"etap":"trojki","indeks":triple_attempts,
+                        "liczba_grup":maks_trojek,
+                        "wydzielenie":key,
+                        "sasiedzi":[str(names.get(n,n))
+                                    for n in sorted(trio-{key},key=str)]})
+            variants={}
+            for member in trio:
+                part=pair_group([member])
+                has_problem=any(e["id"] in bad_ids for e in part)
+                options=engine.opcje_wydzielenia(
+                    part,granice,poligony,limit=32,
+                    ocena_dodatkowa=ocena_dodatkowa,
+                    ocena_planu=_quality,ratunek=has_problem)
+                if member==key:
+                    # Zachowaj konkretny wariant, który spowodował
+                    # wybór tego trójkąta, nawet jeśli nie zmieścił
+                    # się w ograniczonej puli 32 innych rodzin.
+                    options=[favored]+options
+                if not geo.waliduj_uklad(part):
+                    options.append(part)
+                variants[member]=options
+            if any(not v for v in variants.values()):
+                triple_skip_counts["brak_wariantow_czlonka"]+=1
+                continue
+            solved,_=engine._wspolny_plan_dokladny(
+                trio,variants.__getitem__,current,current,2.5,
+                ocena_dodatkowa=ocena_dodatkowa,
+                ocena_planu=_quality)
+            if solved and acceptable(solved):
+                successful_triples+=1
+                break
+
     # Informacja diagnostyczna dla ostatnich błędnych grup.
     # Nie interpretuje braku planu w skończonym zbiorze jako
     # dowodu, że układ poprawny geometrycznie nie istnieje.
@@ -331,6 +425,10 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         "proby_wariantow":attempts,
         "przyjete_poprawki":accepted,
         "ulepszone_pary_sasiadow":successful_pairs,
+        "proby_trojek_sasiadow":triple_attempts,
+        "ulepszone_trojki_sasiadow":successful_triples,
+        "proby_trojek_na_wydzielenie":dict(triple_per_group),
+        "pominiete_trojki_powody":dict(triple_skip_counts),
         "proby_par_sasiadow":pair_attempts,
         "proby_par_na_wydzielenie":{
             str(names.get(k,k)):int(attempts_per_key[k])
