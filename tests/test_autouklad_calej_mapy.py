@@ -60,7 +60,8 @@ class FullMapTests(unittest.TestCase):
             return changed,{}
         with patch.object(auto.engine,"optymalizuj",side_effect=fake):
             out,report=auto.uloz_cala_mape(
-                labels,poly,maks_trudnych=1,rundy_dodatkowe=1)
+                labels,poly,maks_trudnych=1,rundy_dodatkowe=1,
+                maks_estetyka=0)
         self.assertEqual([e["prostokat"] for e in out],
                          [e["prostokat"] for e in labels])
         self.assertEqual(report["skutecznosc"]["napisy_nowe_z_problemem"],0)
