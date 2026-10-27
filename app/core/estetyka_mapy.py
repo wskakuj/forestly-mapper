@@ -66,7 +66,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             maks_grup=36, maks_par=12, postep=None,
             priorytety=(), chronione=(), maks_trojek=6,
             maks_kaskad=0, maks_przesuniec_kaskady=7,
-            budzet_kary_naprawy=0.0):
+            budzet_kary_naprawy=0.0, wzorce=None):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
@@ -179,6 +179,22 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         accepted+=1
         improved_labels.extend(names.get(k,str(k)) for k in keys)
         return True
+
+    # Wzorce od kartografa są wczytywane WYŁĄCZNIE na wyraźne
+    # polecenie i pełnej weryfikacji źródła. Cała mapa musi
+    # przejść normalny walidator. Dopuszczalne jest zachowanie
+    # wcześniej istniejącego zgłoszenia o konserwatywnej
+    # obwiedni fontu, ale nie wolno dodać żadnego nowego błędu.
+    imported_wzorce=[]
+    rejected_wzorce=[]
+    for key,plan in (wzorce or {}).items():
+        if key not in grouped or key in protected:
+            rejected_wzorce.append(str(names.get(key,key)))
+            continue
+        if acceptable(plan):
+            imported_wzorce.append(str(names.get(key,key)))
+        else:
+            rejected_wzorce.append(str(names.get(key,key)))
 
     for index,key in enumerate(target,1):
         attempts+=1
@@ -477,6 +493,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     result=[current[e["id"]] for e in elementy]
     return result,{
         "skanowane_grupy":len(target),
+        "zastosowane_wzorce_reczne":imported_wzorce,
+        "odrzucone_wzorce_reczne":rejected_wzorce,
         "naprawa_kaskadowa":cascade_report,
         "diagnostyka_nierozwiazanych":unresolved_diagnostics,
         "chronione_wydzielenia":sorted(names.get(k,str(k)) for k in protected),
