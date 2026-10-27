@@ -402,7 +402,7 @@ def _pary_wewnatrz(a, b, granice, margines, odstep, limit=64):
         if local not in bounds:
             bounds.append(local)
     seen=set()
-    count=0
+    candidates=[]
     for left,bottom,right,top in bounds:
         # Próba z wielu części wnętrza, bez zakładania wypukłości
         # poligonu; dokładna walidacja odrzuca obszary poza konturem.
@@ -434,10 +434,11 @@ def _pary_wewnatrz(a, b, granice, margines, odstep, limit=64):
                                 powieksz(rect,margines))
                             for rect in (ra,rb)):
                         continue
-                    yield ra, rb
-                    count+=1
-                    if count>=limit:
-                        return
+                    candidates.append((ra,rb))
+    # Równomierny przekrój CAŁEGO poligonu zamiast pierwszych
+    # 72 pozycji od lewej krawędzi. Dla trudnych nieregularnych
+    # obszarów rozłożenie w różnych częściach jest kluczowe.
+    yield from _rozlozone(candidates,limit)
 
 
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
