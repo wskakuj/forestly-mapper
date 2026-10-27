@@ -138,13 +138,15 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               maks_trudnych=24, rundy_dodatkowe=2,
               maks_estetyka=36, maks_par_estetyka=12,
               priorytety_estetyka=(), bazowy_json=None,
-              chronione_estetyka=(), maks_trojek_estetyka=6):
+              chronione_estetyka=(), maks_trojek_estetyka=6,
+              maks_kaskad_estetyka=0,maks_przesuniec_kaskady=7):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     if bazowy_json and not cala_mapa:
         raise ValueError('--bazowy-json wymaga --cala-mapa')
     if cala_mapa and etykiety:
         raise ValueError('--cala-mapa nie moze byc laczona z --etykiety')
-    if maks_estetyka < 0 or maks_par_estetyka < 0 or maks_trojek_estetyka < 0:
+    if min(maks_estetyka,maks_par_estetyka,maks_trojek_estetyka,
+           maks_kaskad_estetyka,maks_przesuniec_kaskady)<0:
         raise ValueError('Budzet estetyki musi byc nieujemny')
     if maks_trudnych < 0 or rundy_dodatkowe < 0:
         raise ValueError('Limity automatycznego dopracowania musza byc nieujemne')
@@ -198,7 +200,10 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_grup=maks_estetyka, maks_par=maks_par_estetyka,
             priorytety=priorytety_estetyka,
             chronione=chronione_estetyka,
-            maks_trojek=maks_trojek_estetyka, postep=pokaz)
+            maks_trojek=maks_trojek_estetyka,
+            maks_kaskad=maks_kaskad_estetyka,
+            maks_przesuniec_kaskady=maks_przesuniec_kaskady,
+            postep=pokaz)
         rap_przed=geo.waliduj_uklad(przed)
         rap_po=geo.waliduj_uklad(po)
         raport={
@@ -226,6 +231,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             priorytety_estetyka=priorytety_estetyka,
             chronione_estetyka=chronione_estetyka,
             maks_trojek_estetyka=maks_trojek_estetyka,
+            maks_kaskad_estetyka=maks_kaskad_estetyka,
+            maks_przesuniec_kaskady=maks_przesuniec_kaskady,
             postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
     else:
         po, raport = engine.optymalizuj(
@@ -326,6 +333,10 @@ def main(argv=None):
                    help='Nazwy A1 szczegolnie brzydkich wydzielen do poprawienia jako pierwsze')
     p.add_argument('--maks-estetyka',type=int,default=36,
                    help='Ile grup dopracowac wizualnie po naprawie kolizji (0 = pomin)')
+    p.add_argument('--maks-kaskad-estetyka',type=int,default=0,
+                   help='Ile trudnych wydzielen probowac naprawic kaskadowo (0 = wylacz)')
+    p.add_argument('--maks-przesuniec-kaskady',type=int,default=7,
+                   help='Ile maksymalnie wydzielen moze wspolnie przesunac jedna kaskada')
     p.add_argument('--maks-trojek-estetyka',type=int,default=6,
                    help='Limit wspolnych prób trzech wydzielen w trudnych skupiskach (0 = pomin)')
     p.add_argument('--maks-par-estetyka',type=int,default=12,
@@ -366,7 +377,9 @@ def main(argv=None):
             p.error('--map-kopia wymaga pliku .MAP')
         if dest.resolve()==Path(args.mapa).resolve() or dest.exists():
             p.error('Kopia juz istnieje albo wskazano oryginal; podaj NOWA nazwe')
-    if args.maks_estetyka < 0 or args.maks_par_estetyka < 0 or args.maks_trojek_estetyka < 0:
+    if min(args.maks_estetyka,args.maks_par_estetyka,
+           args.maks_trojek_estetyka,args.maks_kaskad_estetyka,
+           args.maks_przesuniec_kaskady)<0:
         p.error('--maks-estetyka i --maks-par-estetyka musza byc nieujemne')
     if args.maks_trudnych < 0 or args.rundy_dodatkowe < 0:
         p.error('--maks-trudnych i --rundy-dodatkowe nie moga byc ujemne')
@@ -382,6 +395,10 @@ def main(argv=None):
             print("Wczytano:", event["napisy"], "napisow;",
                   event["wydzielenia"], "wydzielen; rozpoczynam analize...",
                   flush=True)
+        elif event.get("etap") == "kaskada":
+            print("Kaskada:",event["wydzielenie"],
+                  "maks. przesuniec:",event["maks_przesuniec"],
+                  "startow:",event["maks_poczatkow"],flush=True)
         elif event.get("etap") == "trojki":
             print("Trojki %d/%d: %s z %s" % (
                 event["indeks"],event["liczba_grup"],event["wydzielenie"],
@@ -418,6 +435,8 @@ def main(argv=None):
             priorytety_estetyka=args.priorytety_estetyka,
             chronione_estetyka=args.chron_estetyka,
             maks_trojek_estetyka=args.maks_trojek_estetyka,
+            maks_kaskad_estetyka=args.maks_kaskad_estetyka,
+            maks_przesuniec_kaskady=args.maks_przesuniec_kaskady,
             bazowy_json=args.bazowy_json)
     except ValueError as exc:
         p.error(str(exc))
