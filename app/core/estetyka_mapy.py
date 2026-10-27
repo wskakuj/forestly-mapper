@@ -207,7 +207,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     bad_count=sum(bool(remaining_count[k]) for k in repair_first)
     # Przy kilku trudnych wydzieleniach gwarantujemy każdemu
     # dostęp do solvera, zachowując łączny limit prób.
-    per_group_limit=max(1,min(4,maks_par//max(1,bad_count)))
+    per_group_limit=max(1,min(8,maks_par//max(1,bad_count)))
     for key in repair_first:
         if pair_attempts>=maks_par:
             break
