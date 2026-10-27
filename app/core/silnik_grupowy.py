@@ -382,8 +382,67 @@ def _cele_ocenione(anchors, etykiety_zewnetrzne, ocena_dodatkowa,
     return [point for _,point in ranked[:limit]]
 
 
+def _pary_wewnatrz(a, b, granice, margines, odstep, limit=64):
+    """Ustawiaj dwie etykiety RAZEM, w całej powierzchni poligonu.
+
+    Dawniej niezależne listy dziewięciu/osiemnastu pozycji wewnątrz
+    pochodziły z najbliższych punktów przy dotychczasowym miejscu.
+    Jeśli litera i opis wymagają wspólnego przeniesienia, iloczyn
+    takich list może nie zawierać choćby jednej dobrej pary.
+    """
+    if a["wydzielenie"] != b["wydzielenie"]:
+        return
+    poly = a["poligon"]
+    wa, ha = a["prostokat"][2]-a["prostokat"][0], a["prostokat"][3]-a["prostokat"][1]
+    wb, hb = b["prostokat"][2]-b["prostokat"][0], b["prostokat"][3]-b["prostokat"][1]
+    gap = max(odstep+1.0, 3.0)
+    bounds=[bbox(poly)]
+    for ring in geo.kontury_poligonu(poly):
+        local=bbox(ring)
+        if local not in bounds:
+            bounds.append(local)
+    seen=set()
+    count=0
+    for left,bottom,right,top in bounds:
+        # Próba z wielu części wnętrza, bez zakładania wypukłości
+        # poligonu; dokładna walidacja odrzuca obszary poza konturem.
+        for i in range(11):
+            x=left+(i+.5)*(right-left)/11
+            for j in range(11):
+                y=bottom+(j+.5)*(top-bottom)/11
+                offsets=(
+                    ((-(wb+gap)/2,0),((wa+gap)/2,0)),
+                    (((wb+gap)/2,0),(-(wa+gap)/2,0)),
+                    ((0,-(hb+gap)/2),(0,(ha+gap)/2)),
+                    ((0,(hb+gap)/2),(0,-(ha+gap)/2)),
+                )
+                for oa,ob in offsets:
+                    ra=prost((x+oa[0],y+oa[1]),(wa,ha))
+                    rb=prost((x+ob[0],y+ob[1]),(wb,hb))
+                    key=tuple(round(v,2) for v in ra+rb)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    if (geo.prostokaty_koliduja(
+                            powieksz(ra,odstep/2),
+                            powieksz(rb,odstep/2))):
+                        continue
+                    if not all(
+                            geo.prostokat_w_poligonie(
+                                powieksz(rect,margines),poly)
+                            and not granice.przecina(
+                                powieksz(rect,margines))
+                            for rect in (ra,rb)):
+                        continue
+                    yield ra, rb
+                    count+=1
+                    if count>=limit:
+                        return
+
+
 def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
-                      odstep=2.5, limit=24, ocena_dodatkowa=None):
+                      odstep=2.5, limit=24, ocena_dodatkowa=None,
+                      ocena_planu=None):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
     grupa = sorted(grupa, key=lambda e: e["id"])
     # Dla etapu estetyki, gdy limit >24, próbkuj głębiej wewnątrz.
@@ -436,6 +495,10 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                 add([(e, r, True)], c)
     else:
         a, b = grupa
+        if rozszerzone:
+            for ra, rb in _pary_wewnatrz(
+                    a,b,granice,margines,odstep,limit=72):
+                add([(a,ra,False),(b,rb,False)])
         for ra in inside[a["id"]]:
             for rb in inside[b["id"]]:
                 add([(a, ra, False), (b, rb, False)])
@@ -498,7 +561,8 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
         key = tuple((e["id"], tuple(round(v, 2) for v in e["prostokat"]),
                      tuple(round(v, 2) for v in e["wysiegnik"][1])
                      if e["wysiegnik"] else None) for e in plan)
-        score = (_koszt(plan, original) +
+        score = ((ocena_planu(plan) if ocena_planu
+                  else _koszt(plan, original)) +
                  (ocena_dodatkowa(plan) if ocena_dodatkowa else 0.0))
         if key not in unique or score < unique[key][0]:
             unique[key] = (score, kind, plan)
@@ -667,7 +731,7 @@ def _sasiedztwo(grupy, klucz, ile=5):
 
 
 def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep,
-                           ocena_dodatkowa=None):
+                           ocena_dodatkowa=None, ocena_planu=None):
     """Znajdź najtańszy bezkolizyjny układ z ograniczonych list kandydatów.
 
     Pełny przegląd kombinacji <=3 małych grup (zwykle 24^3) usuwa
@@ -691,7 +755,8 @@ def _wspolny_plan_dokladny(klucze, warianty, obecne, oryginaly, odstep,
                    for e, b in fixed):
                 continue
             additional = ocena_dodatkowa(plan) if ocena_dodatkowa else 0.0
-            available.append((_koszt(plan, oryginaly) + additional,
+            available.append(((ocena_planu(plan) if ocena_planu
+                               else _koszt(plan, oryginaly)) + additional,
                               plan, bounds))
         available.sort(key=lambda x: (x[0],
                         tuple((e["id"], e["prostokat"]) for e in x[1])))
