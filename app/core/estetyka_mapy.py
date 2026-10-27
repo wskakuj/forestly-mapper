@@ -130,6 +130,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         if not changed:
             return False
         keys={e["wydzielenie"] for e in changed}
+        if keys & protected:
+            return False
         prior=pair_group(keys)
         cost_old=_quality(prior)
         cost_new=_quality(changed)
