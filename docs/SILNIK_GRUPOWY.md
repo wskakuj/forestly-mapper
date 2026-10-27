@@ -1327,3 +1327,55 @@ raportować jeden geometryczny problem dla tego
 wizualnie zaakceptowanego opisu. Po przeprowadzeniu
 kaskady należy rozróżnić modelowe 416/416 od
 operatorowej akceptacji finalnej mapy.
+
+
+## Kaskada 6s/6gx: analiza wyniku i poprawiony dobór wariantów
+
+Przesłany rzeczywisty raport \`BYSLAW_KASKADA_6S_6GX.json\`
+nie wprowadził dalszych zmian:
+- 411/416 napisów modelowo poprawnych; nadal sześć zgłoszeń;
+- dwie kaskady, zero zatwierdzonych zmian, 124 stany;
+- trzy pełne propozycje dotarły do funkcji akceptacji, lecz
+  zostały odrzucone; jeden cel osiągnął limit stanów;
+- \`6s\`: 56 wariantów, wszystkie blokowane przez dokładnie
+  jeden z sąsiadów (\`6r\`, \`6l\` lub \`6n\`);
+- \`6gx\`: 25 wariantów, każdy blokowany przez cztery do sześciu
+  innych wydzieleń;
+- \`3s\` potwierdzone poprawne wizualnie w GEO-MAP, zablokowane
+  przed modyfikacją wraz z 11 wcześniej zaakceptowanymi grupami.
+
+Analiza kodu wykryła redukowanie wszystkich planów o **tym
+samym zestawie blokujących sąsiadów** do jednego stanu
+początkowego. Traciło to większość rzeczywistych pozycji
+opisów \`6s\` nawet wtedy, gdy ich docelowe geometrie były
+różne. Od teraz wybieramy kandydatury metodą round-robin
+między rodzinami blokad, zachowując wiele położeń każdej
+rodziny. Dla wyraźnie wskazanych dwóch problematycznych
+grup zwiększono limit z 6 do 12 stanów początkowych i
+ze 120 do 200 sprawdzanych stanów na cel.
+
+Trzy odrzucenia końcowe nie były dotąd rozróżniane.
+Nowy raport kaskady podaje:
+- \`cele\` — próby i stany osobno dla \`6s\` i \`6gx\`;
+- \`powody_odrzucenia_gotowego_ukladu\` — oddzielne
+  przyczyny: \`wieksza_kara_przeciec_GIS\`,
+  \`nowe_bledy_geometrii\`, \`wydzielenie_chronione\`,
+  \`bez_redukcji_bledow_ani_poprawy_estetyki\` itd.
+Nie można jeszcze twierdzić, która przyczyna dominowała
+w historycznych trzech odrzuceniach, ponieważ poprzedni
+raport nie zawierał rozbicia.
+
+Nową wersję można przetestować **bez przeliczania** mapy:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_KASKADA_6S_6GX.json" --maks-estetyka 2 --maks-par-estetyka 0 --maks-trojek-estetyka 0 --maks-kaskad-estetyka 2 --maks-przesuniec-kaskady 7 --priorytety-estetyka 6gx 6s --chron-estetyka 3s 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_KASKADA_V2_DIAG.json" --map-kopia "01_BYSŁAW_KASKADA_V2_TEST.MAP"
+\`\`\`
+
+Walidacja całej mapy i zakaz wzrostu kar GIS pozostają bez zmian;
+nie twórz nowej kopii pod istniejącą nazwą (program odmawia
+nadpisania). Model rozmiarów napisów GEO-MAP pozostaje
+przybliżony, więc rzeczywista czytelność wymaga sprawdzenia
+w programie.
