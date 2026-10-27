@@ -131,6 +131,42 @@ class AestheticTests(unittest.TestCase):
         self.assertEqual(joint.call_count,1)
         self.assertEqual(out[0]["prostokat"],letter["prostokat"])
 
+    def test_joint_budget_is_shared_among_unresolved_parcels(self):
+        # Każde wydzielenie ma nakładającą się parę bez wysięgnika.
+        # Pierwszy problem nie może wyczerpać całej puli prób.
+        parcels=[]
+        elements=[]
+        for name, left in (("a",0),("b",200),("c",400)):
+            poly=[(left,0),(left+100,0),
+                  (left+100,100),(left,100)]
+            parcels.append(poly)
+            for kind,suffix in (("litera","L2"),("opis","L3")):
+                elements.append({
+                    "id":name+":"+suffix,"wydzielenie":name,
+                    "rodzaj":kind,"tekst":name,
+                    "prostokat":(left+30,30,left+50,50),
+                    "poligon":poly,"wysiegnik":None})
+        def candidates(group,*args,**kwargs):
+            return [list(group)]
+        def near(groups,key,ile=5):
+            return [key]+[n for n in ("a","b","c") if n!=key]
+        with (patch.object(aesthetic.engine,"opcje_wydzielenia",
+                           side_effect=candidates),
+              patch.object(aesthetic.engine,"_sasiedztwo",
+                           side_effect=near),
+              patch.object(aesthetic.engine,"_blokady_planow",
+                           return_value=[]),
+              patch.object(aesthetic.engine,"_wspolny_plan_dokladny",
+                           return_value=(None,{}))):
+            _,report=aesthetic.dopracuj(
+                elements,parcels,
+                maks_grup=3,maks_par=3)
+        self.assertEqual(report["proby_par_sasiadow"],3)
+        self.assertEqual(set(report["proby_par_na_wydzielenie"]),
+                         {"a","b","c"})
+        self.assertTrue(all(v==1 for v in
+                            report["proby_par_na_wydzielenie"].values()))
+
     def test_zero_budget_leaves_source_exact(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         label_a=label("a",(10,10,30,30),poly)
