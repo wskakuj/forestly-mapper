@@ -1379,3 +1379,67 @@ nie twórz nowej kopii pod istniejącą nazwą (program odmawia
 nadpisania). Model rozmiarów napisów GEO-MAP pozostaje
 przybliżony, więc rzeczywista czytelność wymaga sprawdzenia
 w programie.
+
+
+## 6s i 6gx: dokładna diagnoza fontu i blokady GIS (po kaskadzie V2)
+
+Wynik rzeczywisty \`BYSLAW_KASKADA_V2_DIAG.json\`:
+- wciąż 411/416 napisów poprawnych według modelu, 6 problemów;
+- \`6gx\`: 200 przeszukanych stanów, żadnej ukończonej
+  propozycji, limit wyszukiwania;
+- \`6s\`: 48 stanów, 36 ukończonych propozycji,
+  **wszystkie 36 odrzucone przez karę GIS**;
+- aktualna kara GIS obu niepoprawnych par wynosi zero,
+  więc zakaz jakiegokolwiek zwiększenia kary odrzuca
+  każdy wariant z dodatkowym przecięciem obiektu GIS.
+
+Użytkownik potwierdza wizualnie w GEO-MAP: \`6s\` z opisem
+zmieściłoby się we własnym poligonie. Sprawdzono też
+rzeczywisty 8-wierzchołkowy kontur 6s w źródłowym MAP.
+Przy 1:4000 modelowy opis \`halizna|0.2477\` ma obrys
+około **27,0 × 58,1 m**, a litera \`6s\` około
+**16,2 × 19,9 m**. Dla modelowego nieobróconego obrysu
+w rzeczywistym wąskim, skośnym konturze **brak**
+w pełni zawierającego prostokąta. Test odczytowy z
+hipotetycznie mniejszym o 20% obrysem znajduje pary
+obu napisów wewnątrz. Oznacza to rozbieżność między
+wzrokowym odbiorem GEO-MAP a prostokątowym modelem
+fondu/orientacji — nie dowodzi, że fizyczny font
+jest o 20% mniejszy. NIE obniżać globalnie rozmiarów
+fontu, ponieważ zagraża to niezależnym poprawnym wydzieleniom.
+
+Dodano bezpieczny, osobny, **tylko do odczytu** moduł
+\`diag_dopasowanie_wnetrza\`. Skanuje rzeczywisty
+poligon oraz hipotetyczne wielkości obwiedni
+100%, 90%, 85%, 80%. Pokazuje ile jest
+pozycji samego opisu i litery, ile par bez wzajemnej
+kolizji i ile pierwszych par nie trafia w inne napisy
+(otoczenie sprawdzane na maks. 250 pierwszych parach).
+Ten moduł NIE zmienia czcionki, nie aktualizuje
+pozycji i nie zapisuje kopii MAP.
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_dopasowanie_wnetrza "01_BYSŁAW_z_opisami.MAP" --skala 4000 --bazowy-json "BYSLAW_KASKADA_V2_DIAG.json" --wydzielenie 6s
+\`\`\`
+
+Oddzielnie poprawiono logikę odrzucania nowych kaskad:
+- normalnie budżet wzrostu kar GIS pozostaje **zero**;
+- nowy \`--budzet-kary-naprawy\` (domyślnie 0)
+  opcjonalnie pozwala na wzrost kary **tylko gdy znikają
+  istniejące błędy** z pełnej listy i nie przybywa żadna
+  nowa kolizja (podzbiór kluczy błędów);
+- budżet jest limitowany na atomową propozycję, raportowany
+  w JSON i nie działa dla zwykłego skracania linii.
+- 25 odpowiada karze za jeden dodatkowy punkt przecięcia
+  przy \`--kara-przeciecia 25\`. Nie stosować go automatycznie
+  przed potwierdzeniem, że dodatkowe przecięcie jest
+  kartograficznie dopuszczalne w GEO-MAP.
+
+Priorytet dalszej pracy: kalibracja obrysu znaków fontu
+GEO-MAP i ewentualnie obrotu/układu tekstu, z kontrolą
+tego, co rzeczywiście widzi kartograf. Nie uruchamiać
+kolejnych wielkich kaskad tylko po to, by uzyskać
+liczbę 416/416 kosztem widocznej jakości.
