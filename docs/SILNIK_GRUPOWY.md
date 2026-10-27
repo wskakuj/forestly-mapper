@@ -1260,3 +1260,70 @@ Jeśli wszystkie kandydatury wymagają przesunięcia
 więcej niż dwóch innych jednostek jednocześnie,
 raport pokaże \`wiecej_niz_dwa_blokujace\` i
 nie trzeba ponawiać trójkowego solvera.
+
+
+## Wynik \`BYSLAW_TROJKI_RATUNEK.json\`: akceptacja 3s, kaskada 6s/6gx
+
+Ocena operatora GEO-MAP: \`3s\` wygląda poprawnie.
+\`6s\` oraz \`6gx\` pozostają nieczytelne: **litera jest
+zasłaniana przez własny opis**. \`3s\` należy od teraz
+chronić estetycznie, mimo jednego zgłoszenia modelu
+\`poza_bez_wysiegnika\` (różnica między walidatorem
+prostokątowym a rzeczywistym wyglądem GEO-MAP).
+
+Pełny raport trójek potwierdził brak zmiany: 411/416
+napisów bez modelowanych błędów, 6 zgłoszeń.
+\`proby_trojek_sasiadow=3\`, \`ulepszone_trojki_sasiadow=0\`,
+\`6s\` otrzymało jedną próbę, \`3s\` dwie,
+a \`6gx\` żadnej. Rozkład blokad:
+- \`6gx\`: 25 planów, 4–6 sąsiadów na KAŻDY wariant,
+  dlatego żadna trójka nie może rozwiązać problemu;
+- \`6s\`: 56 planów, 1 blokujący sąsiad na wariant
+  (najczęściej \`6r\`, czasem \`6l\` i \`6n\`);
+- \`3s\`: 72 plany, 1–3 blokujących sąsiadów, lecz
+  operator uważa obecny wygląd za poprawny.
+
+Dodano \`app/core/naprawa_kaskadowa.py\`, używany tylko
+po jawnej aktywacji \`--maks-kaskad-estetyka\`:
+1. Wybiera kilka (domyślnie 6) różnych wariantów
+   *problematycznego* napisu na podstawie liczby
+   rzeczywistych blokujących grup, kary GIS i estetyki.
+2. Każdy wariant staje się początkiem ograniczonej
+   sekwencji przestawienia blokujących etykiet,
+   np. \`6gx\` + 4–6 wydzieleń zewnętrznych.
+3. Zachowuje w pamięci częściowe stany; przyjmuje
+   poprawkę dopiero, gdy cały skupiony układ nie
+   ma nowych blokad, a standardowy walidator
+   rzeczywiście wykazuje mniej błędów. Poprawki są
+   atomowe: nieskuteczna sekwencja nie zmienia mapy.
+4. Nigdy nie zmienia ani nie zasłania zatwierdzonych
+   wizualnie wydzieleń. Ograniczenie 120 rozwiniętych
+   stanów na cel i maksymalnie 7 przemieszczonych
+   wydzieleń zapobiega wybuchowi kombinatorycznemu.
+5. Nie podnosi kary GIS za przecięcia względem
+   poprzedniego układu; oryginalny MAP pozostaje
+   wyłącznie do odczytu.
+6. Raport \`naprawa_kaskadowa\` pokazuje liczbę
+   zaakceptowanych napraw, sprawdzonych stanów,
+   przeniesionych wydzieleń i powody odrzucenia.
+
+Test jednostkowy w \`tests/test_naprawa_kaskadowa.py\`
+potwierdza przestawienie celu i czterech
+blokujących sąsiadów (wspólnie pięć wydzieleń)
+oraz odmowę dla chronionego sąsiada albo zbyt
+małego budżetu. To nie gwarantuje rozwiązania
+rzeczywistej mapy BYSŁAW; weryfikacja odbędzie
+się po otwarciu osobnej kopii w GEO-MAP.
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_TROJKI_RATUNEK.json" --maks-estetyka 2 --maks-par-estetyka 0 --maks-trojek-estetyka 0 --maks-kaskad-estetyka 2 --maks-przesuniec-kaskady 7 --priorytety-estetyka 6gx 6s --chron-estetyka 3s 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_KASKADA_6S_6GX.json" --map-kopia "01_BYSŁAW_KASKADA_TEST.MAP"
+\`\`\`
+
+\`3s\` pozostaje bez zmian, ale model może nadal
+raportować jeden geometryczny problem dla tego
+wizualnie zaakceptowanego opisu. Po przeprowadzeniu
+kaskady należy rozróżnić modelowe 416/416 od
+operatorowej akceptacji finalnej mapy.
