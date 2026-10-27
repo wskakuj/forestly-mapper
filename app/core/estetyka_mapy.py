@@ -189,8 +189,28 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         group=pair_group([key])
         if not any(e.get("wysiegnik") for e in group):
             continue
-        neighbors=engine._sasiedztwo(grouped,key,ile=7)[1:]
-        for neighbor in neighbors[:3]:
+        # Szukaj sąsiadów blokujących KONKRETNE lepsze warianty.
+        # Same poligony mogą być odległe, lecz opis jednego z nich
+        # może blokować najbliższe miejsce przy drugim (np. 6j/6k).
+        candidate_plans=engine.opcje_wydzielenia(
+            group,granice,poligony,limit=72,
+            ocena_dodatkowa=ocena_dodatkowa,
+            ocena_planu=_quality)
+        blocks=Counter()
+        by_group=current
+        for blockers,plan in engine._blokady_planow(
+                candidate_plans,by_group,key,2.5):
+            if (_quality(plan)<_quality(group) or
+                    any(e["id"] in {
+                        ident for err in all_errors
+                        for ident in err["elementy"]} for e in group)):
+                for other in blockers:
+                    blocks[other]+=1
+        geometry=engine._sasiedztwo(grouped,key,ile=9)[1:]
+        ranked_blockers=sorted(blocks,key=lambda k:(-blocks[k],str(k)))
+        neighbors=list(dict.fromkeys(
+            ranked_blockers+geometry))
+        for neighbor in neighbors[:4]:
             if pair_attempts>=maks_par:
                 break
             duo=frozenset((key,neighbor))
