@@ -1443,3 +1443,73 @@ GEO-MAP i ewentualnie obrotu/układu tekstu, z kontrolą
 tego, co rzeczywiście widzi kartograf. Nie uruchamiać
 kolejnych wielkich kaskad tylko po to, by uzyskać
 liczbę 416/416 kosztem widocznej jakości.
+
+
+## Wzorzec ręczny GEO-MAP dla 6s (zatwierdzona para L2/L3)
+
+Operator przekazał lokalny plik \`BYSLAW_6S_RECZNIE.MAP\`.
+Porównanie z \`BYSLAW_KASKADA_V2_DIAG.json\` odtworzonym
+na źródłowym \`01_BYSŁAW_z_opisami.MAP\` potwierdziło:
+- ten sam zbiór 2393 obiektów po UUID, zero zmian geometrii;
+- spośród 536 linii L2/L3 dokładnie DWIE nowe różnice
+  pozycji (obie w wydzieleniu \`6s\`);
+- pozostałe pozycje różnią się od raportu najwyżej o
+  **0,0005 m** wskutek 3 miejsc po przecinku w MAP;
+- pozostałe wysięgniki zgadzają się z raportem;
+- \`6s\` L2: z (0, 0.500) do (14.580, -20.829);
+  \`6s\` L3: z (0, 0) do (0.810, 17.010);
+- bez zmiany P3 (obrotu), współczynnika skali pisma,
+  tekstu, konturu poligonu, bez wysięgników;
+- środek L2 to około (627128.217, 436457.3495),
+  środek L3 (627114.447, 436495.1885).
+
+Dlaczego obecny automat nie proponował tego układu?
+Modelowy pełny prostokąt L2 zawiera się we wnętrzu
+wydzielenia. Modelowy prostokąt L3 według testu
+przecięcia pola mieści się w około **95.3%**, a jedynie
+czubki narożników wystają poza skośny kontur. GEO-MAP
+realnie rysuje GLIFY, nie pełny prostokąt i kartograf
+zatwierdził ten przypadek. Nie należy z jednego takiego
+przypadku wnosić, że wszystkie fonty mają być 20% mniejsze.
+
+Dodano bezpieczne, opcjonalne \`--wzor-map\` i
+\`--wzor-wydzielenia\`. Dla wzorca na dysku użytkownika:
+1. Czyta odtworzony bazowy JSON i referencyjny lokalny MAP.
+2. Wymaga identycznego zestawu UUID, tekstów, geometrii
+   wydzieleń i wymiarów/fontów wszystkich 416 napisów.
+3. Sprawdza, że poza jawnie zaakceptowanymi nazwami A1
+   NIE zmieniły się żadne pozycje ani wysięgniki
+   (tolerancja pozycji 0.03 m na zapis/odczyt MAP).
+4. Przejmuje pozycje **tylko** wskazanej pary L2/L3.
+5. Pełny walidator nie może wykazać ŻADNEGO NOWEGO
+   zgłoszenia kolizji, a liczba problemów musi spaść
+   lub obiektywna estetyka poprawić się.
+6. W raporcie etapu pojawia się
+   \`zastosowane_wzorce_reczne\` lub
+   \`odrzucone_wzorce_reczne\`.
+7. Własny, zaakceptowany przez operatora przykład
+   pozostaje NA JEGO DYSKU — plik MAP nie jest
+   publikowany w repozytorium.
+
+Bez kolejnego przeliczania całej mapy (najlepiej
+w katalogu ForestlyMapper-test na komputerze użytkownika):
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_KASKADA_V2_DIAG.json" --wzor-map "BYSLAW_6S_RECZNIE.MAP" --wzor-wydzielenia 6s --maks-estetyka 0 --maks-par-estetyka 0 --maks-trojek-estetyka 0 --maks-kaskad-estetyka 0 --chron-estetyka 3s 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_6S_Z_WZORCA.json" --map-kopia "01_BYSŁAW_6S_Z_WZORCA_TEST.MAP"
+\`\`\`
+
+Oczekiwana weryfikacja: względem poprzednich 6 błędów
+powinno zniknąć nakładanie się L2 i L3 w \`6s\`;
+modelowy błąd pełnego prostokąta L3
+\`poza_bez_wysiegnika\` może pozostać, mimo poprawnej
+wizualnie mapy. Nie należy sztucznie uznawać
+całego raportu za bezbłędny.
+
+Ten etap odtwarza UDOWODNIONY ręczny układ,
+ale **nie jest automatycznym uczeniem geometrii
+czcionek z jednego przypadku**. Dalsza generalizacja
+wymaga zmierzenia obrysów glifów/fontu GEO-MAP
+i testów na wielu poligonach.
