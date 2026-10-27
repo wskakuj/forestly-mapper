@@ -20,6 +20,7 @@ from app.core import eksport_propozycji_map as export
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
 from app.core import silnik_grupowy as engine
+from app.core import wzorce_reczne as manual
 from app.core import uklad_opisow as uk
 
 
@@ -140,8 +141,13 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               priorytety_estetyka=(), bazowy_json=None,
               chronione_estetyka=(), maks_trojek_estetyka=6,
               maks_kaskad_estetyka=0,maks_przesuniec_kaskady=7,
-              budzet_kary_naprawy=0.0):
+              budzet_kary_naprawy=0.0,
+              wzor_map=None,wzor_wydzielenia=()):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
+    if bool(wzor_map)!=bool(wzor_wydzielenia):
+        raise ValueError('--wzor-map i --wzor-wydzielenia nalezy podac razem')
+    if wzor_map and (not cala_mapa or not bazowy_json):
+        raise ValueError('Wzor MAP wymaga wznowienia przez --cala-mapa --bazowy-json')
     if bazowy_json and not cala_mapa:
         raise ValueError('--bazowy-json wymaga --cala-mapa')
     if cala_mapa and etykiety:
@@ -196,6 +202,9 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     if cala_mapa and bazowy_json:
         poprzedni, baza = resume.odtworz(
             przed, mapa, scale, wysokosc_mm, bazowy_json)
+        wzorce=(manual.wczytaj_wzorce(
+            wzor_map,poprzedni,nazwy,scale,wysokosc_mm,
+            wzor_wydzielenia) if wzor_map else None)
         po, est = aesthetics.dopracuj(
             poprzedni, wszystkie, nazwy=nazwy,
             ocena_dodatkowa=dodatkowy_koszt,
@@ -206,6 +215,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_kaskad=maks_kaskad_estetyka,
             maks_przesuniec_kaskady=maks_przesuniec_kaskady,
             budzet_kary_naprawy=budzet_kary_naprawy,
+            wzorce=wzorce,
             postep=pokaz)
         rap_przed=geo.waliduj_uklad(przed)
         rap_po=geo.waliduj_uklad(po)
@@ -325,6 +335,9 @@ def main(argv=None):
     p.add_argument("--limit-grup", type=int, default=8,
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
     p.add_argument('--bazowy-json',help='Wznow dopracowanie z poprzedniego pelnego raportu JSON bez ponownego skanowania 189 grup')
+    p.add_argument('--wzor-map',help='Lokalna kopia MAP z recznie zaakceptowanymi pozycjami (tylko z --bazowy-json)')
+    p.add_argument('--wzor-wydzielenia',nargs='+',default=(),
+                   help='Jedyne wydzielenia, ktorych pozycje wolno przejac ze wzoru (np. 6s)')
     p.add_argument('--cala-mapa',action='store_true',
                    help='Optymalizuj WSZYSTKIE problematyczne wydzielenia bez limitu 8 grup, potem automatycznie dopracuj najtrudniejsze')
     p.add_argument('--maks-trudnych',type=int,default=24,
@@ -444,6 +457,8 @@ def main(argv=None):
             maks_kaskad_estetyka=args.maks_kaskad_estetyka,
             maks_przesuniec_kaskady=args.maks_przesuniec_kaskady,
             budzet_kary_naprawy=args.budzet_kary_naprawy,
+            wzor_map=args.wzor_map,
+            wzor_wydzielenia=args.wzor_wydzielenia,
             bazowy_json=args.bazowy_json)
     except ValueError as exc:
         p.error(str(exc))
