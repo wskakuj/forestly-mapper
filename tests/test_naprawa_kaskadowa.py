@@ -74,6 +74,28 @@ class CascadeTests(unittest.TestCase):
         self.assertEqual(list(current.values()),initial)
         self.assertGreater(report["przyczyny"]["kolizja_z_chronionym"],0)
 
+    def test_multiple_starts_with_same_blocking_group_are_preserved(self):
+        poly,original,current,grouped,choices=fixture()
+        alternative=[
+            choices["a"][0][0],
+            dict(choices["a"][0][1],prostokat=(115,103,245,137))
+        ]
+        choices["a"].append(alternative)
+        rejected=[]
+        with patch.object(engine,"opcje_wydzielenia",
+                          side_effect=lambda group,*a,**kw:
+                          choices[group[0]["wydzielenie"]]):
+            report=cascade.napraw_kaskadowo(
+                current,grouped,engine.Granice([poly]),[poly],
+                targets=["a"],zaakceptuj=lambda plan:(
+                    rejected.append(plan) or False),
+                maks_przesuniec=5,maks_poczatkow=2,maks_stanow=80)
+        self.assertEqual(report["przyjete"],0)
+        self.assertEqual(report["cele"]["a"]["rodziny_blokad"],1)
+        self.assertEqual(report["cele"]["a"]["przeanalizowane_poczatki"],2)
+        self.assertGreaterEqual(len(rejected),1)
+        self.assertEqual(current["a:L3"]["prostokat"],(15,15,25,25))
+
     def test_budget_rejects_large_cluster_without_mutation(self):
         poly,original,current,grouped,choices=fixture()
         with patch.object(engine,"opcje_wydzielenia",
