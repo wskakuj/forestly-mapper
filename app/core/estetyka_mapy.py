@@ -167,10 +167,13 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             postep({"etap":"estetyka","indeks":index,
                     "liczba_grup":len(target),"wydzielenie":key})
         group=pair_group([key])
+        has_issues=any(e["id"] in {
+            ident for issue in all_errors for ident in issue["elementy"]
+        } for e in group)
         plans=engine.opcje_wydzielenia(
             group,granice,poligony,limit=72,
             ocena_dodatkowa=ocena_dodatkowa,
-            ocena_planu=_quality)
+            ocena_planu=_quality,ratunek=has_issues)
         fixed=[e for e in current.values() if e["wydzielenie"]!=key]
         # Testuj najlepsze po jakości, a nie po przesunięciu od oryginału.
         ordered=sorted(plans,key=lambda plan:(
@@ -228,7 +231,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         candidate_plans=engine.opcje_wydzielenia(
             group,granice,poligony,limit=72,
             ocena_dodatkowa=ocena_dodatkowa,
-            ocena_planu=_quality)
+            ocena_planu=_quality,ratunek=needs_repair)
         blocks=Counter()
         by_group=current
         for blockers,plan in engine._blokady_planow(
@@ -256,7 +259,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             variants={k:engine.opcje_wydzielenia(
                 pair_group([k]),granice,poligony,limit=72,
                 ocena_dodatkowa=ocena_dodatkowa,
-                ocena_planu=_quality) for k in duo}
+                ocena_planu=_quality,
+                ratunek=any(e["id"] in unresolved_ids
+                           for e in pair_group([k]))) for k in duo}
             # Bez zachowania bieżącej pozycji sąsiada dokładny duet
             # był ZAWSZE zmuszony do zmiany obu wydzieleń, nawet gdy
             # najlepiej było tylko oddać miejsce docelowemu opisowi.
@@ -288,8 +293,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             continue
         incumbent=pair_group([key])
         choices=engine.opcje_wydzielenia(
-            incumbent,granice,poligony,limit=24,
-            ocena_dodatkowa=ocena_dodatkowa)
+            incumbent,granice,poligony,limit=72,
+            ocena_dodatkowa=ocena_dodatkowa,
+            ocena_planu=_quality,ratunek=True)
         blockers=engine._blokady_planow(choices,current,key,2.5)
         clean=[p for blocked,p in blockers if not blocked]
         penalty_current=(ocena_dodatkowa(incumbent)
@@ -301,7 +307,10 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             b for blocked,_ in blockers for b in blocked)
         unresolved_diagnostics.append({
             "wydzielenie":str(names.get(key,key)),
-            "liczba_problemow":remaining[key],
+            "liczba_problemow":len([
+                issue for issue in all_errors if any(
+                    current.get(i,{}).get("wydzielenie")==key
+                    for i in issue["elementy"])]),
             "liczba_wygenerowanych_planow":len(choices),
             "plany_bez_blokad_napisow":len(clean),
             "plany_bez_blokad_i_wzrostu_kary_GIS":
@@ -312,7 +321,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             "najczestsze_blokady_wariantow":[
                 {"wydzielenie":str(names.get(k,k)), "ile":count}
                 for k,count in frequent.most_common(5)],
-            "uwaga":"Tylko skrocony zestaw 24 wariantow; brak nie dowodzi niemozliwosci poprawy."
+            "uwaga":"Tryb ratunkowy i maksymalnie 72 warianty; brak nie dowodzi niemozliwosci poprawy."
         })
     result=[current[e["id"]] for e in elementy]
     return result,{
