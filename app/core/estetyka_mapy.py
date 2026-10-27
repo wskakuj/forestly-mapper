@@ -32,13 +32,19 @@ def _quality(group):
             value += 155.0 if e["rodzaj"]=="litera" else 115.0
             length=math.dist(*lead)/h
             value += 14.0*length + 2.0*max(0,length-3)**2
-    letter=next((e for e in group if e["rodzaj"]=="litera"),None)
-    desc=next((e for e in group if e["rodzaj"]=="opis"),None)
-    if letter and desc:
-        h=max((letter["prostokat"][3]-letter["prostokat"][1]
-               +desc["prostokat"][3]-desc["prostokat"][1])/2,geo.EPS)
-        value+=10.0*engine.odleglosc_boxow(
-            letter["prostokat"],desc["prostokat"])/h
+    # W grupie kilku sąsiadów licz tylko pary Z TEGO SAMEGO
+    # wydzielenia, nigdy litery 6j do opisu 6k.
+    owners=defaultdict(list)
+    for e in group:
+        owners[e["wydzielenie"]].append(e)
+    for entries in owners.values():
+        letter=next((e for e in entries if e["rodzaj"]=="litera"),None)
+        desc=next((e for e in entries if e["rodzaj"]=="opis"),None)
+        if letter and desc:
+            h=max((letter["prostokat"][3]-letter["prostokat"][1]
+                   +desc["prostokat"][3]-desc["prostokat"][1])/2,geo.EPS)
+            value+=10.0*engine.odleglosc_boxow(
+                letter["prostokat"],desc["prostokat"])/h
     return value
 
 
