@@ -979,3 +979,66 @@ nie potwierdzają jeszcze poprawności wyglądu realnej mapy.
 Klasyczny raport ilościowy 410/416 nie dowodzi idealnej
 jakości drukarskiej: kolejne kryteria będą wymagały
 weryfikacji praktycznej przez kartografa.
+
+
+## Estetyka — wybór połączonych pozycji wewnętrznych i krótkich wysięgników
+
+Ostatni wynik rzeczywisty \`BYSLAW_ESTETYKA_auto.json\` (przed
+niniejszymi poprawkami): 40 zaakceptowanych zmian estetyki;
+154→147 wysięgników, 8386,88→7220,88 m ich łącznej długości,
+ale nadal 7 zgłoszeń błędów i 410/416 napisów bez problemów.
+Wynik zawiera **83** dodatkowe przecięcia wysięgników
+z elementami mapy (90 było w poprzednim raporcie).
+
+Konkretne defekty z oględzin w GEO-MAP:
+\`6s\` — litera nakłada się na opis (nadal brak poprawnego
+przestawienia); \`3k\` — wysięgnik opisu 151,5 m;
+\`6t\` — 119,2 m; \`4g\` — 98,1 m; \`6o\` — 91,8 m;
+\`1j\` — 88,4 m; \`6j\` — 150,6 m. Na dodatek właściciel
+mapy zauważył nieużywane wnętrza \`1h,1d,1l,1n,3c,4r,4p,4t\`
+oraz zewnętrzne litery \`2n,6d\`.
+
+W analizie kodu wykryto trzy ograniczenia:
+1. Plan \`L2/L3\` wewnątrz był tworzony jako iloczyn
+   **niezależnych list pozycji** każdej etykiety, a te listy
+   kończyły się po kilku położeniach najbliższych oryginałowi.
+   Nowa \`_pary_wewnatrz\` rozkłada **zwartą parę**
+   poziomo lub pionowo na siatce wielu części konturu
+   i weryfikuje obie pełne obwiednie. Warianty
+   zachowują różnorodność po całym obszarze mapy.
+2. Przesuwanie litery w kierunku opisu na zewnątrz mogło
+   zostać pominięte, bo tylko 18 pozycji wybierano
+   według odległości od **starej** litery. Rozszerzone
+   \`_pozycje_wewnatrz(...,roznorodne=True)\` wybiera
+   kandydatów zarówno blisko poprzedniej etykiety, jak
+   i przy drugim napisie, a resztę metodą maksymalnego
+   rozrzutu (farthest-point sampling).
+3. Przy wspólnym przestawianiu sąsiadów dokładny solver
+   nadal minimalizował **przesunięcie od obecnych pozycji**,
+   nie bezwzględną jakość kartograficzną. Nowy opcjonalny
+   \`ocena_planu\` umożliwia priorytet mniejszej liczby
+   i długości wysięgników; obecny dobry układ sąsiada
+   pozostaje zawsze kandydatem. Dobór sąsiadów uwzględnia
+   obiekty blokujące konkretne, korzystniejsze plany
+   napisów (a nie tylko bliskość geometryczną poligonów).
+
+Niezmienne ograniczenia: brak nowych kolizji napisów,
+brak wzrostu kar GIS, brak modyfikacji pierwotnego MAP,
+a testowe pliki są odrębnymi nienadpisywalnymi kopiami.
+Szacowane wymiary fontu GEO-MAP i niezbadana semantyka
+dziur w poligonach pozostają ograniczeniami.
+
+Weryfikacja realnego wyniku na nowym przebiegu estetyki,
+**bez** ponownego rozwiązywania 189 grup:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_ESTETYKA_auto.json" --maks-estetyka 64 --maks-par-estetyka 20 --priorytety-estetyka 6s 4g 4j 3k 2n 6d 6t 6o 1j 1h 1d 1l 1n 3c 4r 4p 4t 6j 6k --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_ESTETYKA_V2_auto.json" --map-kopia "01_BYSŁAW_ESTETYKA_V2_TEST.MAP"
+\`\`\`
+
+Liczbę zaakceptowanych zmian, długości i kolizje porównaj
+z poprzednim JSON. Nowy moduł poprawia **zestaw dostępnych
+propozycji i ranking**, nie gwarantuje, że wszystkie
+kandydatury są możliwe na rzeczywistej mapie.
