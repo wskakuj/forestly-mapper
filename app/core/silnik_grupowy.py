@@ -386,8 +386,14 @@ def opcje_wydzielenia(grupa, granice, poligony, margines=2.5,
                       odstep=2.5, limit=24, ocena_dodatkowa=None):
     """Jedna decyzja obejmuje wszystkie L2/L3, ze wspólnym celem na zewnątrz."""
     grupa = sorted(grupa, key=lambda e: e["id"])
-    inside = {e["id"]: list(_pozycje_wewnatrz(e, granice, margines)) for e in grupa}
+    # Dla etapu estetyki, gdy limit >24, próbkuj głębiej wewnątrz.
+    # Wcześniejsze dziewięć najbliższych punktów potrafiło ominąć
+    # miejsce na obie etykiety w szerokim, lecz nieregularnym poligonie.
     rozszerzone = limit > 24
+    inside = {e["id"]: list(_pozycje_wewnatrz(
+        e, granice, margines,
+        n=(11 if rozszerzone else 9),
+        limit=(18 if rozszerzone else 9))) for e in grupa}
     outside = {e["id"]: list(_pozycje_zewnetrzne(
         e, granice, poligony, margines,
         limit=(96 if rozszerzone else 48))) for e in grupa}
