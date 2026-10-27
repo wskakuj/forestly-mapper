@@ -403,6 +403,10 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             for p in clean]
         frequent=Counter(
             b for blocked,_ in blockers for b in blocked)
+        sized=Counter(len(blocked) for blocked,_ in blockers)
+        feasible_triples=sum(
+            1 for blocked,_ in blockers
+            if 0<len(blocked)<=2 and not (blocked & protected))
         unresolved_diagnostics.append({
             "wydzielenie":str(names.get(key,key)),
             "liczba_problemow":len([
@@ -410,6 +414,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                     current.get(i,{}).get("wydzielenie")==key
                     for i in issue["elementy"])]),
             "liczba_wygenerowanych_planow":len(choices),
+            "rozklad_liczby_blokujacych_wydzielen":{
+                str(k):v for k,v in sorted(sized.items())},
+            "warianty_potencjalnie_dla_trojki":feasible_triples,
             "plany_bez_blokad_napisow":len(clean),
             "plany_bez_blokad_i_wzrostu_kary_GIS":
                 sum(x<=penalty_current+1e-6 for x in penalty_clean),
