@@ -206,7 +206,6 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_kaskad=maks_kaskad_estetyka,
             maks_przesuniec_kaskady=maks_przesuniec_kaskady,
             budzet_kary_naprawy=budzet_kary_naprawy,
-            budzet_kary_naprawy=budzet_kary_naprawy,
             postep=pokaz)
         rap_przed=geo.waliduj_uklad(przed)
         rap_po=geo.waliduj_uklad(po)
