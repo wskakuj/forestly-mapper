@@ -458,6 +458,12 @@ def main(argv=None):
             est["po"]["liczba_wysiegnikow"],
             est["przed"]["laczna_dlugosc_wysiegnikow"],
             est["po"]["laczna_dlugosc_wysiegnikow"]))
+    if est and est.get("naprawa_kaskadowa") is not None:
+        kres=est["naprawa_kaskadowa"]
+        print("KASKADA: cele %d | zaakceptowane %d | sprawdzone stany %d" % (
+            kres["proby"],kres["przyjete"],kres["sprawdzone_stany"]))
+        if kres["przyczyny"]:
+            print("KASKADA: powody braku naprawy:",kres["przyczyny"])
     if result["skutecznosc_calej_mapy"] is not None:
         stats = result["skutecznosc_calej_mapy"]
         print("NAPISY BEZ PROBLEMOW: %d/%d (przed: %d)" % (
