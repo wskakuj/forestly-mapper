@@ -84,7 +84,9 @@ def raport_wydzielenia(elementy, nazwa, wspolczynniki=(1.,.9,.85,.8),
         # niekolidujących w poligonie liczymy bez przycinania.
         for ra,rb in _para_w_srodku(a,b):
             alone_pair_count+=1
-            if alone_pair_count>500 and example is not None:
+            # Pary licz w całości, lecz otoczenie sprawdzaj dla
+            # ograniczonej próbki, żeby nie robić 10^7 porównań.
+            if alone_pair_count>250:
                 continue
             pair=[{**letter,"prostokat":ra,"wysiegnik":None},
                   {**description,"prostokat":rb,"wysiegnik":None}]
@@ -103,6 +105,7 @@ def raport_wydzielenia(elementy, nazwa, wspolczynniki=(1.,.9,.85,.8),
             "pozycje_opisu_wewnatrz":len(b),
             "pary_niekolidujace_w_poligonie":alone_pair_count,
             "pary_bez_kolizji_z_innymi_napisami_przy_probie":without_neighbor_hit,
+            "maks_pierwszych_par_do_testu_otoczenia":250,
             "przykladowa_para_modelowa":example,
             "uwaga":"Zmniejszony obrys NIE jest poprawka czcionki. Nie zapisuj tych pozycji do MAP bez kalibracji realnego fontu."
         })
@@ -127,7 +130,7 @@ def main(argv=None):
         labels,_=resume.odtworz(labels,mapa,args.skala,args.wysokosc_mm,
                                 args.bazowy_json)
     report=raport_wydzielenia(labels,args.wydzielenie,krok=args.krok)
-    print("WYDZIElENIE:",report["wydzielenie"])
+    print("WYDZIELENIE:",report["wydzielenie"])
     print("BBOX poligonu:",report["poligon_bbox"])
     for e in report["etykiety"]:
         print(e["rodzaj"],e["tekst"],"wymiary obrysu [m]:",
