@@ -65,7 +65,8 @@ def _metrics(elements):
 def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             maks_grup=36, maks_par=12, postep=None,
             priorytety=(), chronione=(), maks_trojek=6,
-            maks_kaskad=0, maks_przesuniec_kaskady=7):
+            maks_kaskad=0, maks_przesuniec_kaskady=7,
+            budzet_kary_naprawy=0.0):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
@@ -73,7 +74,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     potem ograniczona liczba zmian sąsiadujących par.
     """
     if (maks_grup<0 or maks_par<0 or maks_trojek<0 or
-            maks_kaskad<0 or maks_przesuniec_kaskady<0):
+            maks_kaskad<0 or maks_przesuniec_kaskady<0 or
+            budzet_kary_naprawy<0):
         raise ValueError("Budzet estetyki nie moze byc ujemny")
     current={e["id"]:dict(e) for e in elementy}
     all_errors=geo.waliduj_uklad(list(current.values()))
@@ -128,7 +130,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             break
         target.append(key)
 
-    def acceptable(changed, odrzucenia=None):
+    def acceptable(changed, odrzucenia=None,
+                   dopusc_kare_naprawy=False):
         nonlocal all_errors, old_keys, accepted
         def odmow(powod):
             if odrzucenia is not None:
@@ -146,8 +149,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                      if ocena_dodatkowa else 0.0)
         penalty_new=(ocena_dodatkowa(changed)
                      if ocena_dodatkowa else 0.0)
-        if penalty_new>penalty_old+1e-6:
-            return odmow("wieksza_kara_przeciec_GIS")
+        # Nie odrzucaj jeszcze kary: przy NAPRAWIE rzeczywistej
+        # kolizji można dopuścić niewielki, jawnie zadany budżet.
+        # Estetyka bez usuwania błędów nadal nie może go zwiększać.
         updates={e["id"]:e for e in changed}
         if any(e["id"] not in current for e in changed):
             return odmow("nieznane_etykiety")
@@ -156,6 +160,14 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         after_keys={_issue_key(i) for i in problems}
         if not after_keys.issubset(old_keys):
             return odmow("nowe_bledy_geometrii")
+        fixed_errors=old_keys-after_keys
+        if penalty_new>penalty_old+1e-6:
+            if not fixed_errors:
+                return odmow("wieksza_kara_przeciec_GIS")
+            if not dopusc_kare_naprawy or not budzet_kary_naprawy:
+                return odmow("wieksza_kara_przeciec_GIS")
+            if penalty_new-penalty_old > budzet_kary_naprawy+1e-6:
+                return odmow("przekroczony_budzet_kary_naprawy")
         # Samo naprawienie kolizji jest zawsze korzystne,
         # nawet jeśli wymaga wydłużenia linii. Gdy lista błędów
         # się nie zmniejsza, wymagamy poprawy estetyki.
@@ -404,12 +416,14 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             ocena_dodatkowa=ocena_dodatkowa,
             ocena_planu=_quality,
             zaakceptuj=lambda proposal: acceptable(
-                proposal,cascade_rejections),
+                proposal,cascade_rejections,
+                dopusc_kare_naprawy=True),
             maks_przesuniec=maks_przesuniec_kaskady,
             maks_poczatkow=12,maks_stanow=200,
             postep=postep)
         cascade_report["powody_odrzucenia_gotowego_ukladu"]=dict(
             cascade_rejections)
+        cascade_report["budzet_dodatkowej_kary_przy_naprawie"]=budzet_kary_naprawy
 
     # Informacja diagnostyczna dla ostatnich błędnych grup.
     # Nie interpretuje braku planu w skończonym zbiorze jako
