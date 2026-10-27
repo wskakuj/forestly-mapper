@@ -18,7 +18,7 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
                     ocena_dodatkowa=None, ocena_planu=None,
                     zaakceptuj, maks_przesuniec=7,
                     maks_poczatkow=4, maks_stanow=100,
-                    postep=None, raport_odrzucen=None):
+                    postep=None):
     """Spróbuj przemieścić cel i kolejnych rzeczywistych blokujących.
 
     current: mapa id etykiety -> aktualny element (słownik).
