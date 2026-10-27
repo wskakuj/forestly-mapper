@@ -75,6 +75,64 @@ class AestheticTests(unittest.TestCase):
                 "powody_odrzucenia_gotowego_ukladu"],
             {"wieksza_kara_przeciec_GIS":1})
 
+    def test_explicit_repair_budget_may_allow_one_extra_gis_crossing(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        bad=label("a",(130,25,160,45),poly)
+        good=dict(bad,prostokat=(20,25,50,45))
+        def penalty(plan):
+            return 25.0 if any(e["prostokat"]==good["prostokat"]
+                               for e in plan) else 0.0
+        def fake_cascade(*args,**kw):
+            ok=kw["zaakceptuj"]([good])
+            return {"proby":1,"przyjete":int(ok),"sprawdzone_stany":1,
+                    "przyczyny":{},"udane_wydzielenia":[]}
+        def run(budget):
+            with (patch.object(aesthetic.engine,"opcje_wydzielenia",
+                               return_value=[]),
+                  patch.object(aesthetic.cascade,"napraw_kaskadowo",
+                               side_effect=fake_cascade)):
+                return aesthetic.dopracuj(
+                    [bad],[poly],nazwy={"a":"6s"},
+                    priorytety=["6s"],maks_grup=1,
+                    maks_par=0,maks_trojek=0,maks_kaskad=1,
+                    budzet_kary_naprawy=budget,
+                    ocena_dodatkowa=penalty)
+        original,strict=run(0)
+        self.assertEqual(original[0]["prostokat"],bad["prostokat"])
+        self.assertEqual(strict["naprawa_kaskadowa"]["przyjete"],0)
+        moved,relaxed=run(25)
+        self.assertEqual(moved[0]["prostokat"],good["prostokat"])
+        self.assertEqual(relaxed["naprawa_kaskadowa"]["przyjete"],1)
+        self.assertFalse(geo.waliduj_uklad(moved))
+        too_low,limited=run(24)
+        self.assertEqual(too_low[0]["prostokat"],bad["prostokat"])
+        self.assertEqual(
+            limited["naprawa_kaskadowa"]["powody_odrzucenia_gotowego_ukladu"],
+            {"przekroczony_budzet_kary_naprawy":1})
+
+    def test_repair_budget_does_not_permit_new_collisions(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        bad=label("a",(130,25,160,45),poly)
+        blocker=label("b",(20,25,50,45),poly)
+        invalid=dict(bad,prostokat=blocker["prostokat"])
+        def fake_cascade(*a,**kw):
+            self.assertFalse(kw["zaakceptuj"]([invalid]))
+            return {"proby":1,"przyjete":0,"sprawdzone_stany":1,
+                    "przyczyny":{},"udane_wydzielenia":[]}
+        with (patch.object(aesthetic.engine,"opcje_wydzielenia",
+                           return_value=[]),
+              patch.object(aesthetic.cascade,"napraw_kaskadowo",
+                           side_effect=fake_cascade)):
+            _,report=aesthetic.dopracuj(
+                [bad,blocker],[poly],nazwy={"a":"6s","b":"6r"},
+                priorytety=["6s"],maks_grup=1,maks_par=0,
+                maks_trojek=0,maks_kaskad=1,
+                budzet_kary_naprawy=1000,
+                ocena_dodatkowa=lambda plan:0.0)
+        self.assertEqual(
+            report["naprawa_kaskadowa"]["powody_odrzucenia_gotowego_ukladu"],
+            {"nowe_bledy_geometrii":1})
+
     def test_quality_independent_of_original_displacement(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
