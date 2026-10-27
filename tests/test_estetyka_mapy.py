@@ -47,6 +47,34 @@ class AestheticTests(unittest.TestCase):
         self.assertEqual(result[0]["prostokat"],outside["prostokat"])
         self.assertEqual(result[1]["prostokat"],blocker["prostokat"])
 
+    def test_cascade_reports_gis_penalty_rejection_reason(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        source=label("a",(130,25,160,45),poly)
+        inside=dict(source,prostokat=(20,25,50,45))
+        def strong_penalty(plan):
+            return 50.0 if any(
+                e["prostokat"]==inside["prostokat"] for e in plan
+            ) else 0.0
+        def mock_cascade(*args,**kwargs):
+            self.assertFalse(kwargs["zaakceptuj"]([inside]))
+            return {"proby":1,"przyjete":0,"sprawdzone_stany":1,
+                    "przyczyny":{"odrzucone_przez_walidacje":1},
+                    "udane_wydzielenia":[]}
+        with (patch.object(aesthetic.engine,"opcje_wydzielenia",
+                           return_value=[]),
+              patch.object(aesthetic.cascade,"napraw_kaskadowo",
+                           side_effect=mock_cascade)):
+            output,report=aesthetic.dopracuj(
+                [source],[poly],nazwy={"a":"6s"},
+                priorytety=["6s"],maks_grup=1,
+                maks_par=0,maks_trojek=0,maks_kaskad=1,
+                ocena_dodatkowa=strong_penalty)
+        self.assertEqual(output[0]["prostokat"],source["prostokat"])
+        self.assertEqual(
+            report["naprawa_kaskadowa"][
+                "powody_odrzucenia_gotowego_ukladu"],
+            {"wieksza_kara_przeciec_GIS":1})
+
     def test_quality_independent_of_original_displacement(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
