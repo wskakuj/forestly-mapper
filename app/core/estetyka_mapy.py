@@ -63,7 +63,7 @@ def _metrics(elements):
 
 def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             maks_grup=36, maks_par=12, postep=None,
-            priorytety=()):
+            priorytety=(), chronione=()):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
@@ -78,6 +78,10 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     granice=engine.Granice(poligony)
     before=_metrics(elementy)
     names=nazwy or {}
+    # Zatwierdzonych przez kartografa wydzieleń nie ruszaj ani jako
+    # głównego celu, ani jako sąsiada wspólnej optymalizacji.
+    locked_names={str(name).strip().casefold() for name in chronione
+                  if str(name).strip()}
     attempts=accepted=0
     improved_labels=[]
     grouped=defaultdict(list)
@@ -87,6 +91,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     def pair_group(keys):
         return [current[e["id"]] for k in keys for e in grouped[k]]
 
+    protected={key for key in grouped if
+               str(names.get(key,key)).strip().casefold() in locked_names}
+
     def attractiveness(key):
         group=pair_group([key])
         score=_quality(group)
@@ -95,7 +102,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             score+=500.0
         return score
 
-    todo=sorted(grouped,key=lambda k:(-attractiveness(k),str(k)))
+    todo=sorted((key for key in grouped if key not in protected),
+                key=lambda k:(-attractiveness(k),str(k)))
     # Wskazane przez kartografa wydzielenia analizuj jako pierwsze,
     # ale pozostały budżet wciąż przeznaczaj automatycznie na całą mapę.
     priority_labels={str(name).strip().casefold()
@@ -210,7 +218,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         ranked_blockers=sorted(blocks,key=lambda k:(-blocks[k],str(k)))
         neighbors=list(dict.fromkeys(
             ranked_blockers+geometry))
-        for neighbor in neighbors[:4]:
+        for neighbor in (n for n in neighbors if n not in protected):
+            if pair_attempts>=maks_par:
+                break
             if pair_attempts>=maks_par:
                 break
             duo=frozenset((key,neighbor))
@@ -245,6 +255,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     result=[current[e["id"]] for e in elementy]
     return result,{
         "skanowane_grupy":len(target),
+        "chronione_wydzielenia":sorted(names.get(k,str(k)) for k in protected),
         "proby_wariantow":attempts,
         "przyjete_poprawki":accepted,
         "ulepszone_pary_sasiadow":successful_pairs,
