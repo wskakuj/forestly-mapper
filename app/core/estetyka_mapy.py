@@ -128,13 +128,17 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             break
         target.append(key)
 
-    def acceptable(changed):
+    def acceptable(changed, odrzucenia=None):
         nonlocal all_errors, old_keys, accepted
-        if not changed:
+        def odmow(powod):
+            if odrzucenia is not None:
+                odrzucenia[powod]+=1
             return False
+        if not changed:
+            return odmow("pusta_propozycja")
         keys={e["wydzielenie"] for e in changed}
         if keys & protected:
-            return False
+            return odmow("wydzielenie_chronione")
         prior=pair_group(keys)
         cost_old=_quality(prior)
         cost_new=_quality(changed)
@@ -143,20 +147,20 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         penalty_new=(ocena_dodatkowa(changed)
                      if ocena_dodatkowa else 0.0)
         if penalty_new>penalty_old+1e-6:
-            return False
+            return odmow("wieksza_kara_przeciec_GIS")
         updates={e["id"]:e for e in changed}
         if any(e["id"] not in current for e in changed):
-            return False
+            return odmow("nieznane_etykiety")
         proposed=[updates.get(e["id"],e) for e in current.values()]
         problems=geo.waliduj_uklad(proposed)
         after_keys={_issue_key(i) for i in problems}
         if not after_keys.issubset(old_keys):
-            return False
+            return odmow("nowe_bledy_geometrii")
         # Samo naprawienie kolizji jest zawsze korzystne,
         # nawet jeśli wymaga wydłużenia linii. Gdy lista błędów
         # się nie zmniejsza, wymagamy poprawy estetyki.
         if not (after_keys<old_keys or cost_new<cost_old-1e-5):
-            return False
+            return odmow("bez_redukcji_bledow_ani_poprawy_estetyki")
         for e in changed:
             current[e["id"]]=dict(e)
         all_errors,old_keys=problems,after_keys
@@ -387,6 +391,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     # dla nierozwiązanych, niechronionych wydzieleń. Każda zmiana
     # jest zatwierdzana przez ten sam pełny walidator co wcześniej.
     cascade_report=None
+    cascade_rejections=Counter()
     if maks_kaskad:
         still_invalid={current[i]["wydzielenie"]
                        for err in all_errors for i in err["elementy"]
@@ -398,10 +403,13 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             targets=focus,protected=protected,names=names,
             ocena_dodatkowa=ocena_dodatkowa,
             ocena_planu=_quality,
-            zaakceptuj=acceptable,
+            zaakceptuj=lambda proposal: acceptable(
+                proposal,cascade_rejections),
             maks_przesuniec=maks_przesuniec_kaskady,
-            maks_poczatkow=6,maks_stanow=120,
+            maks_poczatkow=12,maks_stanow=200,
             postep=postep)
+        cascade_report["powody_odrzucenia_gotowego_ukladu"]=dict(
+            cascade_rejections)
 
     # Informacja diagnostyczna dla ostatnich błędnych grup.
     # Nie interpretuje braku planu w skończonym zbiorze jako
