@@ -17,7 +17,7 @@ class AestheticTests(unittest.TestCase):
     def test_moves_external_text_inside_without_new_collision(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
-                      ((145,25),(50,50)))
+                      ((145,45),(50,50)))
         inner=dict(outside,prostokat=(20,20,50,40),wysiegnik=None)
         self.assertFalse(geo.waliduj_uklad([outside]))
         with patch.object(aesthetic.engine,"opcje_wydzielenia",
@@ -35,7 +35,7 @@ class AestheticTests(unittest.TestCase):
     def test_refuses_local_improvement_if_another_label_is_hit(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
-                      ((145,25),(50,50)))
+                      ((145,45),(50,50)))
         blocker=label("b",(20,20,50,40),poly)
         proposed=dict(outside,prostokat=blocker["prostokat"],
                       wysiegnik=None)
@@ -50,9 +50,9 @@ class AestheticTests(unittest.TestCase):
     def test_quality_independent_of_original_displacement(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
-                      ((145,25),(50,50)))
+                      ((145,45),(50,50)))
         closer=dict(outside,prostokat=(110,25,140,45),
-                    wysiegnik=((125,25),(50,50)))
+                    wysiegnik=((125,45),(50,50)))
         inside=dict(outside,prostokat=(20,20,50,40),wysiegnik=None)
         self.assertLess(aesthetic._quality([inside]),
                         aesthetic._quality([closer]))
