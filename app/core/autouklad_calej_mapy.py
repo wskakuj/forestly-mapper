@@ -11,6 +11,7 @@ import math
 
 from app.core import geometria_ukladu as geo
 from app.core import silnik_grupowy as engine
+from app.core import estetyka_mapy as aesthetics
 
 
 def _klucz_problemu(issue):
@@ -91,7 +92,8 @@ def _skutecznosc(przed, po, elementy, names):
 def uloz_cala_mape(elementy, poligony, *, nazwy=None,
                    szerokosc_wiazki=16, maks_grupa=3, przebiegi=2,
                    ocena_dodatkowa=None, maks_trudnych=24,
-                   rundy_dodatkowe=2, postep=None):
+                   rundy_dodatkowe=2, postep=None,
+                   maks_estetyka=36, maks_par_estetyka=12):
     """Wielostopniowa optymalizacja bez konieczności ręcznego V14, V15...
 
     Etap 1: wszystkie konfliktowe grupy, bez limitu liczby skupisk.
@@ -100,6 +102,8 @@ def uloz_cala_mape(elementy, poligony, *, nazwy=None,
     Każdy rezultat lokalny musi ZMNIEJSZYĆ zbiór istniejących
     błędów bez tworzenia nowych. W przeciwnym razie jest odrzucany.
     """
+    if maks_estetyka < 0 or maks_par_estetyka < 0:
+        raise ValueError("Budzet estetyki musi byc nieujemny")
     if maks_trudnych < 0 or rundy_dodatkowe < 0:
         raise ValueError("Limity automatycznej optymalizacji musza byc nieujemne")
     if maks_grupa < 1 or szerokosc_wiazki < 1 or przebiegi < 1:
@@ -192,12 +196,24 @@ def uloz_cala_mape(elementy, poligony, *, nazwy=None,
             if not improved_round:
                 break
 
+    # Oddzielny przebieg do POPRAWIANIA ESTETYKI, także tam, gdzie
+    # etap kolizji zakończył pracę. Kontroluje ponownie pełen układ.
+    estetyka = None
+    if maks_estetyka:
+        current, estetyka = aesthetics.dopracuj(
+            current, poligony, nazwy=names,
+            ocena_dodatkowa=ocena_dodatkowa,
+            maks_grup=maks_estetyka, maks_par=maks_par_estetyka,
+            postep=postep)
+        current_errors = _problemy(current)
+
     report = {
         "tryb":"cala_mapa",
         "skan_calej_mapy":True,
         "etap_wstepny":{k:v for k,v in first.items() if k!="nierozwiazane"},
         "etap_wstepny_odrzucony_przez_nowe_problemy":rolled_back,
         "rundy_dodatkowe":rounds_done,
+        "dopracowanie_estetyki": estetyka,
         "trudne_grupy_przebadane":attempts,
         "limit_trudnych_grup":maks_trudnych,
         "grupy_ulepszone_w_dopracowaniu":accepted,
