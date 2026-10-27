@@ -1092,3 +1092,59 @@ py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cal
 Nie nadpisuj starego raportu ani poprzedniej kopii MAP.
 Nowy test jest celowo krótki: drugi etap estetyki i naprawy,
 nie pełny restart skanowania.
+
+
+## Ocena \`BYSLAW_ZATWIERDZONE_I_NAPRAWY.json\` i proporcjonalny budżet napraw
+
+Raport kolejnego przebiegu: **411/416** napisów bez zgłoszeń,
+**265/268** wydzieleń bez problemów, **6** problemów
+(\`6gx\`: 3, \`6s\`: 2, \`3s\`: 1). \`3i\` zostało naprawione.
+280 etykiet ma modyfikację względem oryginału.
+Równocześnie 143→144 wysięgników, 6392,26→6407,37 m,
+81 dodatkowych przecięć bez zmiany. Zbiór zmian dla
+zatwierdzonych \`4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h\`
+w całości zgodny z raportem V2.
+
+Z analizy rzeczywistych obrysów poligonów (z oryginalnego MAP)
+oraz aktualnego szacunkowego modelu fontu wynika, że
+\`6s\`, \`6gx\` i \`3s\` są trudne: w próbie
+siatkowej nie znaleziono **całego opisu** mieszczącego się
+z marginesem w odpowiednim poligonie. Nie jest to
+matematyczny dowód braku miejsca, ale prawdopodobnie
+potrzebny będzie przynajmniej jeden wysięgnik.
+Nie traktować tych miejsc jako zadania polegającego na
+samym przesuwaniu dwóch tekstów wewnątrz.
+
+Przyczyną dodatkowych niepowodzeń był wspólny budżet
+\`--maks-par-estetyka\`, konsumowany w kolejności
+dotychczasowych wybranych grup — \`6s\` mogło w ogóle
+nie dostać szansy. Od teraz:
+- aktualne, nadal błędne wydzielenia idą **przed**
+  poprawnymi wizualnie, od największej liczby zgłoszeń;
+- na każde trudne wydzielenie przypada osobna kwota
+  (do ośmiu) prób sąsiedzkich;
+- raport \`dopracowanie_estetyki.proby_par_na_wydzielenie\`
+  pokazuje rzeczywisty rozkład prób;
+- \`diagnostyka_nierozwiazanych\` pokazuje liczbę
+  wygenerowanych planów, ile blokują napisy sąsiadów,
+  ile przechodzi aktualną granicę kar GIS i które
+  wydzielenia najczęściej blokują alternatywy.
+  Raport wykorzystuje ograniczony zestaw 24 planów
+  i **nie dowodzi** braku dobrego rozwiązania poza nimi.
+
+Sprawdź tylko pozostałe trzy trudne grupy, nie
+rozmieszczaj ponownie całej mapy:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_ZATWIERDZONE_I_NAPRAWY.json" --maks-estetyka 3 --maks-par-estetyka 24 --priorytety-estetyka 6gx 6s 3s --chron-estetyka 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_TRUDNE_WYDZIELENIA.json" --map-kopia "01_BYSŁAW_TRUDNE_TEST.MAP"
+\`\`\`
+
+Jeżeli 6s/6gx/3s pozostaną niepoprawne,
+\`diagnostyka_nierozwiazanych\` pozwala
+rozróżnić brak kandydatów, blokady sąsiadów
+od niespełnienia rygoru kar za przecinanie
+geometrii — bez kolejnej ślepej zwiększanej
+puli prób.
