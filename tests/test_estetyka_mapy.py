@@ -169,6 +169,63 @@ class AestheticTests(unittest.TestCase):
         self.assertTrue(all(v==1 for v in
                             report["proby_par_na_wydzielenie"].values()))
 
+    def test_three_parcel_solver_unblocks_two_labels_together(self):
+        # Dwóch sąsiadów równocześnie blokuje jedyny wariant
+        # naprawiający literę i opis A; solver dwóch wydzieleń
+        # nigdy nie potrafiłby usunąć obu blokad.
+        poly=[(0,0),(200,0),(200,200),(0,200)]
+        a1={"id":"a:L2","wydzielenie":"a","rodzaj":"litera",
+            "tekst":"a","prostokat":(10,10,20,20),
+            "poligon":poly,"wysiegnik":None}
+        a2={"id":"a:L3","wydzielenie":"a","rodzaj":"opis",
+            "tekst":"opis","prostokat":(10,10,20,20),
+            "poligon":poly,"wysiegnik":None}
+        b=label("b",(40,40,50,50),poly)
+        c=label("c",(70,40,95,60),poly)
+        new_a=[dict(a1,prostokat=(40,40,50,50)),
+               dict(a2,prostokat=(70,40,95,60))]
+        new_b=[dict(b,prostokat=(120,80,130,90))]
+        new_c=[dict(c,prostokat=(140,80,165,100))]
+        plans={"a":[new_a],"b":[new_b],"c":[new_c]}
+        with patch.object(aesthetic.engine,"opcje_wydzielenia",
+                          side_effect=lambda group,*args,**kwargs:
+                          plans[group[0]["wydzielenie"]]):
+            result,report=aesthetic.dopracuj(
+                [a1,a2,b,c],[poly],nazwy={"a":"6s","b":"6r","c":"6l"},
+                priorytety=["6s"],maks_grup=1,maks_par=0,
+                maks_trojek=1)
+        self.assertFalse(geo.waliduj_uklad(result))
+        self.assertEqual(report["ulepszone_trojki_sasiadow"],1)
+        self.assertEqual(report["proby_trojek_na_wydzielenie"],{"6s":1})
+        self.assertEqual(result[0]["prostokat"],(40,40,50,50))
+        self.assertEqual(result[2]["prostokat"],(120,80,130,90))
+        self.assertEqual((a1["prostokat"],b["prostokat"]),
+                         ((10,10,20,20),(40,40,50,50)))
+
+    def test_three_parcel_solver_cannot_move_approved_neighbor(self):
+        poly=[(0,0),(200,0),(200,200),(0,200)]
+        a1={"id":"a:L2","wydzielenie":"a","rodzaj":"litera",
+            "tekst":"a","prostokat":(10,10,20,20),
+            "poligon":poly,"wysiegnik":None}
+        a2=dict(a1,id="a:L3",rodzaj="opis")
+        b=label("b",(40,40,50,50),poly)
+        c=label("c",(70,40,95,60),poly)
+        plans={
+            "a":[[dict(a1,prostokat=(40,40,50,50)),
+                  dict(a2,prostokat=(70,40,95,60))]],
+            "b":[[dict(b,prostokat=(120,80,130,90))]],
+            "c":[[dict(c,prostokat=(140,80,165,100))]]}
+        with patch.object(aesthetic.engine,"opcje_wydzielenia",
+                          side_effect=lambda group,*args,**kwargs:
+                          plans[group[0]["wydzielenie"]]):
+            result,report=aesthetic.dopracuj(
+                [a1,a2,b,c],[poly],nazwy={"a":"6s","b":"6r","c":"6l"},
+                priorytety=["6s"],chronione=["6r"],
+                maks_grup=1,maks_par=0,maks_trojek=1)
+        self.assertEqual(report["proby_trojek_sasiadow"],0)
+        self.assertEqual(report["ulepszone_trojki_sasiadow"],0)
+        self.assertEqual(result,[a1,a2,b,c])
+
     def test_zero_budget_leaves_source_exact(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         label_a=label("a",(10,10,30,30),poly)
