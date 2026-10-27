@@ -19,6 +19,22 @@ class EngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.optymalizuj([e,e])
 
+    def test_diverse_interior_sampler_keeps_far_edge_near_description(self):
+        poly=[(0,0),(240,0),(240,100),(0,100)]
+        e=item('a:L2','litera',(15,20,30,40),poly)
+        borders=engine.Granice([poly])
+        old=list(engine._pozycje_wewnatrz(
+            e,borders,2.5,n=11,limit=24))
+        varied=list(engine._pozycje_wewnatrz(
+            e,borders,2.5,n=11,limit=24,roznorodne=True,
+            referencje=((230,50),)))
+        self.assertEqual(len(old),24)
+        self.assertEqual(len(varied),24)
+        self.assertGreater(max(engine.srodek(r)[0] for r in varied),200)
+        self.assertLess(max(engine.srodek(r)[0] for r in old),160)
+        self.assertTrue(all(geo.prostokat_w_poligonie(r,poly)
+                            for r in varied))
+
     def test_joint_interiors_cover_both_sides_of_large_irregular_parcel(self):
         # Obie etykiety pierwotnie leżą daleko poza obrębem poligonu.
         # Muszą być generowane jako wspólna, zwarta para w całej
