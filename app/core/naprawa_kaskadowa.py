@@ -18,7 +18,7 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
                     ocena_dodatkowa=None, ocena_planu=None,
                     zaakceptuj, maks_przesuniec=7,
                     maks_poczatkow=4, maks_stanow=100,
-                    postep=None):
+                    postep=None, raport_odrzucen=None):
     """Spróbuj przemieścić cel i kolejnych rzeczywistych blokujących.
 
     current: mapa id etykiety -> aktualny element (słownik).
@@ -41,6 +41,7 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
     option_cache={}
     blocker_cache={}
     serial=0
+    per_target={}
 
     def current_group(k):
         return [current[e["id"]] for e in grouped[k]]
@@ -113,17 +114,36 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
             initial.append((len(blocking),
                             ocena_dodatkowa(plan) if ocena_dodatkowa else 0,
                             quality(plan),plan))
+        # Różne pozycje z TAKIM SAMYM zestawem blokujących sąsiadów
+        # nie są równoważne. Wcześniej traciliśmy np. 39 z 42 planów
+        # 6s zablokowanych przez 6r, w tym możliwe czyste rozwiązania.
+        # Rozkładamy pulę między rodziny blokad zamiast odrzucać duplikaty.
         initial.sort(key=lambda x:x[:3])
-        seen_starts=set()
+        families={}
+        for nblock,penalty,score,plan in initial:
+            signature=tuple(sorted(blockages(key,plan),key=str))
+            families.setdefault(signature,[]).append((penalty,score,plan))
+        for plans in families.values():
+            plans.sort(key=lambda x:(x[0],x[1]))
         start_plans=[]
-        for _,_,_,plan in initial:
-            blocked=tuple(sorted(blockages(key,plan),key=str))
-            if blocked in seen_starts:
-                continue
-            seen_starts.add(blocked)
-            start_plans.append(plan)
+        # Rotacja daje szansę różnym sąsiadom oraz różnym pozycjom
+        # przed tym, jak limit wyszukiwania zużyje jedna rodzina.
+        for rank in range(max(map(len,families.values()),default=0)):
+            for signature in sorted(families,key=lambda k:(len(k),k)):
+                rows=families[signature]
+                if rank<len(rows):
+                    start_plans.append(rows[rank][2])
+                    if len(start_plans)>=maks_poczatkow:
+                        break
             if len(start_plans)>=maks_poczatkow:
                 break
+        per_target[str(names.get(key,key))]={
+            "wygenerowane_plany":len(initial),
+            "rodziny_blokad":len(families),
+            "przeanalizowane_poczatki":len(start_plans),
+            "stany":0,
+            "odrzucenia":0,
+            "zaakceptowano":False}
         if not start_plans:
             reasons["brak_kandydata_startowego"]+=1
             continue
@@ -149,6 +169,7 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
             _,_,assigned,blocking=heapq.heappop(heap)
             inspected+=1
             expanded+=1
+            per_target[str(names.get(key,key))]["stany"]+=1
             if not blocking:
                 proposal=[e for plan in assigned.values() for e in plan]
                 if zaakceptuj(proposal):
@@ -158,8 +179,10 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
                         "przesuniete":[str(names.get(k,k))
                                       for k in sorted(assigned,key=str)]})
                     improved=True
+                    per_target[str(names.get(key,key))]["zaakceptowano"]=True
                     break
                 reasons["odrzucone_przez_walidacje"]+=1
+                per_target[str(names.get(key,key))]["odrzucenia"]+=1
                 continue
             if len(assigned)>=maks_przesuniec:
                 reasons["limit_liczby_przesuniec"]+=1
@@ -211,4 +234,5 @@ def napraw_kaskadowo(current, grouped, granice, poligony, *,
                 reasons["limit_sprawdzonych_stanow"]+=1
     return {"proby":attempts,"przyjete":len(successes),
             "sprawdzone_stany":expanded,"przyczyny":dict(reasons),
+            "cele":per_target,
             "udane_wydzielenia":successes}
