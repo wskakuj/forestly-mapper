@@ -236,6 +236,7 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             maks_trojek_estetyka=maks_trojek_estetyka,
             maks_kaskad_estetyka=maks_kaskad_estetyka,
             maks_przesuniec_kaskady=maks_przesuniec_kaskady,
+            budzet_kary_naprawy=budzet_kary_naprawy,
             postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
     else:
         po, raport = engine.optymalizuj(
