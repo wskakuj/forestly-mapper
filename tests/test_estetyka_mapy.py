@@ -14,6 +14,41 @@ def label(name, rect, poly, leader=None):
 
 
 class AestheticTests(unittest.TestCase):
+    def test_human_approved_plan_removes_overlap_even_when_bbox_font_still_protrudes(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        # Kolizja własnych L2/L3 i modelowo wystający narożnik L3.
+        letter={"id":"a:L2","wydzielenie":"a","rodzaj":"litera",
+                "tekst":"6s","prostokat":(80,35,92,47),
+                "poligon":poly,"wysiegnik":None}
+        description={"id":"a:L3","wydzielenie":"a","rodzaj":"opis",
+                     "tekst":"halizna|0.2477",
+                     "prostokat":(75,20,110,65),
+                     "poligon":poly,"wysiegnik":None}
+        approved_letter=dict(letter,prostokat=(40,70,52,82))
+        errors_before=geo.waliduj_uklad([letter,description])
+        self.assertEqual(len(errors_before),2)
+        result,report=aesthetic.dopracuj(
+            [letter,description],[poly],nazwy={"a":"6s"},
+            maks_grup=0,maks_par=0,maks_trojek=0,maks_kaskad=0,
+            wzorce={"a":[approved_letter,dict(description)]})
+        self.assertEqual(report["zastosowane_wzorce_reczne"],["6s"])
+        self.assertEqual(report["odrzucone_wzorce_reczne"],[])
+        self.assertEqual(len(geo.waliduj_uklad(result)),1)
+        self.assertEqual(result[0]["prostokat"],(40,70,52,82))
+
+    def test_human_approved_plan_cannot_create_collision_in_other_parcel(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        problem=label("a",(110,20,130,40),poly)
+        neighbor=label("b",(20,20,40,40),poly)
+        example=dict(problem,prostokat=(20,20,40,40))
+        result,report=aesthetic.dopracuj(
+            [problem,neighbor],[poly],nazwy={"a":"6s","b":"6r"},
+            maks_grup=0,maks_par=0,maks_trojek=0,maks_kaskad=0,
+            wzorce={"a":[example]})
+        self.assertEqual(report["zastosowane_wzorce_reczne"],[])
+        self.assertEqual(report["odrzucone_wzorce_reczne"],["6s"])
+        self.assertEqual(result,[problem,neighbor])
+
     def test_moves_external_text_inside_without_new_collision(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         outside=label("a",(130,25,160,45),poly,
