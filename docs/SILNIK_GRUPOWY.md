@@ -1148,3 +1148,57 @@ rozróżnić brak kandydatów, blokady sąsiadów
 od niespełnienia rygoru kar za przecinanie
 geometrii — bez kolejnej ślepej zwiększanej
 puli prób.
+
+
+## Brak postępu przy 6s/6gx/3s: rozszerzone pozycje zewnętrzne
+
+W raporcie \`BYSLAW_TRUDNE_WYDZIELENIA.json\` **nie było**
+nowych zmian względem poprzedniego raportu:
+411/416 napisów bez błędów, 265/268 wydzieleń,
+6 problemów, 144 wysięgniki i 6407,37 m długości.
+Przyjętych poprawek: zero. Rozdział 24 prób faktycznie
+zadziałał równo: \`6gx:8\`, \`6s:8\`, \`3s:8\`.
+
+Diagnostyka wykazała rzeczywiste ograniczenia:
+- \`6s\`: zero wariantów w próbie ograniczonej do 24;
+  litera mieści się wewnątrz własnego poligonu, ale
+  opis \`halizna|0.2477\` jest z nią nałożony i
+  częściowo wychodzi za granicę bez wysięgnika.
+- \`6gx\`: 10 wariantów, wszystkie blokowane przez
+  kilka sąsiednich jednostek jednocześnie; szczególnie
+  trudny ze względu na bardzo długi opis \`A2\`.
+- \`3s\`: 24 warianty, żaden bez blokad z sąsiedztwa,
+  m.in. \`3r\`, \`3p\`, \`3i\`.
+Brak wariantu w tych skończonych zestawach nie oznacza,
+że prawidłowego rozmieszczenia w ogóle nie ma.
+
+Nowy \`ratunek=True\` w \`opcje_wydzielenia\`
+jest aktywowany **tylko dla wydzieleń z aktualnymi błędami**
+w etapie estetyki:
+- alternatywne miejsca po czterech stronach obrysu,
+  z większą liczbą dystansów i próbek poziomych/pionowych;
+- zachowanie istniejącej dobrej pozycji L2 jako możliwości,
+  gdy trzeba wyprowadzić jedynie L3;
+- zwarte pary L2+L3 na zewnątrz, gdy wąski poligon
+  nie mieści żadnej z nich;
+- pełne sprawdzanie granic i odrzucanie nowych konfliktów
+  napisów oraz zwiększonej kary GIS pozostają bez zmian.
+
+Nowy przebieg z wznawianiem tego samego wyniku.
+Wykorzystuje tę samą listę jedenastu wydzieleń
+zaakceptowanych w GEO-MAP, nadal nienaruszalnych:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_TRUDNE_WYDZIELENIA.json" --maks-estetyka 3 --maks-par-estetyka 12 --priorytety-estetyka 6gx 6s 3s --chron-estetyka 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_RATUNEK_ZEWNETRZNY.json" --map-kopia "01_BYSŁAW_RATUNEK_TEST.MAP"
+\`\`\`
+
+Po uruchomieniu zbadaj \`raport_silnika.dopracowanie_estetyki\`
+oraz \`diagnostyka_nierozwiazanych\`. Tryb ratunkowy
+jest liczony tylko na kilku problematycznych wydzieleniach,
+ale może być cięższy niż zwykła próba estetyki.
+Kopia GEO-MAP pozostaje osobnym plikiem testowym,
+a usunięcie błędów nie jest jeszcze potwierdzone
+przez wykonanie na rzeczywistej mapie.
