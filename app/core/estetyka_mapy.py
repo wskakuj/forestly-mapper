@@ -289,6 +289,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     triple_per_group=Counter()
     triple_skip_counts=Counter()
     seen_triples=set()
+    still_bad={current[i]["wydzielenie"] for err in all_errors
+               for i in err["elementy"] if i in current}
+    triple_budget_each=max(1,maks_trojek//max(1,len(still_bad)))
     for key in repair_first:
         if triple_attempts>=maks_trojek:
             break
@@ -335,7 +338,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                             tuple(sorted(trio,key=str)),trio,proposal))
         choices.sort(key=lambda x:(x[0],x[1],x[2]))
         for _,_,_,trio,favored in choices:
-            if triple_attempts>=maks_trojek:
+            if (triple_attempts>=maks_trojek or
+                    triple_per_group[str(names.get(key,key))]>=triple_budget_each):
                 break
             if trio in seen_triples:
                 continue
@@ -428,6 +432,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         "proby_trojek_sasiadow":triple_attempts,
         "ulepszone_trojki_sasiadow":successful_triples,
         "proby_trojek_na_wydzielenie":dict(triple_per_group),
+        "limit_trojek_na_trudne_wydzielenie":triple_budget_each,
         "pominiete_trojki_powody":dict(triple_skip_counts),
         "proby_par_sasiadow":pair_attempts,
         "proby_par_na_wydzielenie":{
