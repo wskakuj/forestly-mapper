@@ -14,6 +14,8 @@ from app.core import diagnostyka_map as dm
 from app.core import kontury_map as km
 from app.core import przeciecia_map as pm
 from app.core import autouklad_calej_mapy as auto
+from app.core import estetyka_mapy as aesthetics
+from app.core import wznow_raport as resume
 from app.core import eksport_propozycji_map as export
 from app.core import geometria_ukladu as geo
 from app.core import opisy_na_mape as onm
@@ -135,8 +137,10 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               kara_wielokrotnej_granicy=0.0, cala_mapa=False,
               maks_trudnych=24, rundy_dodatkowe=2,
               maks_estetyka=36, maks_par_estetyka=12,
-              priorytety_estetyka=()):
+              priorytety_estetyka=(), bazowy_json=None):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
+    if bazowy_json and not cala_mapa:
+        raise ValueError('--bazowy-json wymaga --cala-mapa')
     if cala_mapa and etykiety:
         raise ValueError('--cala-mapa nie moze byc laczona z --etykiety')
     if maks_estetyka < 0 or maks_par_estetyka < 0:
@@ -184,7 +188,31 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
     if postep:
         pokaz({"etap": "odczyt", "napisy": len(przed),
                "wydzielenia": len({e["wydzielenie"] for e in przed})})
-    if cala_mapa:
+    if cala_mapa and bazowy_json:
+        poprzedni, baza = resume.odtworz(
+            przed, mapa, scale, wysokosc_mm, bazowy_json)
+        po, est = aesthetics.dopracuj(
+            poprzedni, wszystkie, nazwy=nazwy,
+            ocena_dodatkowa=dodatkowy_koszt,
+            maks_grup=maks_estetyka, maks_par=maks_par_estetyka,
+            priorytety=priorytety_estetyka, postep=pokaz)
+        rap_przed=geo.waliduj_uklad(przed)
+        rap_po=geo.waliduj_uklad(po)
+        raport={
+            "tryb":"cala_mapa",
+            "skan_calej_mapy":True,
+            "raport_bazowy":str(bazowy_json),
+            "bazowe_problemy":baza["liczba_nierozwiazanych"],
+            "dopracowanie_estetyki":est,
+            "nierozwiazane":rap_po,
+            "po":dict(Counter(i["typ"] for i in rap_po)),
+            "przed":dict(Counter(i["typ"] for i in rap_przed)),
+            "skutecznosc":auto._skutecznosc(
+                rap_przed,rap_po,po,nazwy),
+            "analiza_czesciowa":False,
+            "ostrzezenie":"Wznowiono poprzedni raport; nie przeliczano ponownie wszystkich grup."
+        }
+    elif cala_mapa:
         po, raport = auto.uloz_cala_mape(
             przed, wszystkie, nazwy=nazwy,
             szerokosc_wiazki=szerokosc_wiazki,
@@ -280,6 +308,7 @@ def main(argv=None):
     p.add_argument("--przebiegi", type=int, default=1)
     p.add_argument("--limit-grup", type=int, default=8,
                    help="Maks. liczba skupisk do rozpatrzenia (0 = bez limitu)")
+    p.add_argument('--bazowy-json',help='Wznow dopracowanie z poprzedniego pelnego raportu JSON bez ponownego skanowania 189 grup')
     p.add_argument('--cala-mapa',action='store_true',
                    help='Optymalizuj WSZYSTKIE problematyczne wydzielenia bez limitu 8 grup, potem automatycznie dopracuj najtrudniejsze')
     p.add_argument('--maks-trudnych',type=int,default=24,
@@ -316,6 +345,10 @@ def main(argv=None):
         p.error("--limit-grup nie moze byc ujemny")
     if args.kara_przeciecia < 0:
         p.error('--kara-przeciecia nie moze byc ujemna')
+    if args.bazowy_json and not args.cala_mapa:
+        p.error('--bazowy-json wymaga --cala-mapa')
+    if args.bazowy_json and args.json and Path(args.bazowy_json).resolve()==Path(args.json).resolve():
+        p.error('Raport wynikowy nie moze nadpisac raportu bazowego')
     if args.map_kopia and not args.cala_mapa:
         p.error('--map-kopia wymaga --cala-mapa')
     if args.map_kopia:
@@ -369,7 +402,8 @@ def main(argv=None):
             rundy_dodatkowe=args.rundy_dodatkowe,
             maks_estetyka=args.maks_estetyka,
             maks_par_estetyka=args.maks_par_estetyka,
-            priorytety_estetyka=args.priorytety_estetyka)
+            priorytety_estetyka=args.priorytety_estetyka,
+            bazowy_json=args.bazowy_json)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
