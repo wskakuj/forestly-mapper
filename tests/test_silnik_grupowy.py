@@ -124,6 +124,33 @@ class EngineTests(unittest.TestCase):
             and not geo.punkt_w_poligonie(engine.srodek(r),own)
             for r in candidates))
 
+    def test_emergency_sampler_finds_remote_slot_standard_rings_miss(self):
+        poly=[(0,0),(40,0),(40,40),(0,40)]
+        e=item('a:L3','opis',(10,0,30,40),poly)
+        class OneDistantOpening:
+            def przecina(self,rect):
+                x,y=engine.srodek(rect)
+                return not (abs(x-20)<.01 and abs(y-156)<.01)
+        border=OneDistantOpening()
+        normal=list(engine._pozycje_zewnetrzne(
+            e,border,[poly],2.5,limit=96))
+        rescue=list(engine._zewnetrzne_ratunkowe(
+            e,border,2.5,limit=64))
+        self.assertFalse(normal)
+        self.assertEqual(len(rescue),1)
+        self.assertAlmostEqual(engine.srodek(rescue[0])[1],156.0)
+
+    def test_emergency_plans_are_still_geometrically_valid(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        letter=item('a:L2','litera',(40,45,52,61),poly)
+        desc=item('a:L3','opis',(36,33,66,83),poly)
+        boundary=engine.Granice([poly])
+        plans=engine.opcje_wydzielenia(
+            [letter,desc],boundary,[poly],limit=72,ratunek=True)
+        self.assertTrue(plans)
+        self.assertTrue(all(not geo.waliduj_uklad(p) for p in plans))
+        self.assertEqual(letter["prostokat"],(40,45,52,61))
+
     def test_exterior_sampler_reaches_narrow_offset_corridor(self):
         """Pozycje pomiędzy starymi próbkami muszą być osiągalne.
 
