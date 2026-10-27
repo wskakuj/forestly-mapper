@@ -159,7 +159,8 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         group=pair_group([key])
         plans=engine.opcje_wydzielenia(
             group,granice,poligony,limit=72,
-            ocena_dodatkowa=ocena_dodatkowa)
+            ocena_dodatkowa=ocena_dodatkowa,
+            ocena_planu=_quality)
         fixed=[e for e in current.values() if e["wydzielenie"]!=key]
         # Testuj najlepsze po jakości, a nie po przesunięciu od oryginału.
         ordered=sorted(plans,key=lambda plan:(
@@ -199,15 +200,24 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             pair_attempts+=1
             attempts+=1
             variants={k:engine.opcje_wydzielenia(
-                pair_group([k]),granice,poligony,limit=48,
-                ocena_dodatkowa=ocena_dodatkowa) for k in duo}
+                pair_group([k]),granice,poligony,limit=72,
+                ocena_dodatkowa=ocena_dodatkowa,
+                ocena_planu=_quality) for k in duo}
+            # Bez zachowania bieżącej pozycji sąsiada dokładny duet
+            # był ZAWSZE zmuszony do zmiany obu wydzieleń, nawet gdy
+            # najlepiej było tylko oddać miejsce docelowemu opisowi.
+            for k in duo:
+                incumbent=pair_group([k])
+                if not geo.waliduj_uklad(incumbent):
+                    variants[k].append(incumbent)
             if any(not v for v in variants.values()):
                 continue
             # Dokładna próba bierze pod uwagę nieruchome otoczenie,
             # a akceptacja pilnuje, żeby nie pogorszyć czystości MAP.
             solved,_=engine._wspolny_plan_dokladny(
                 duo,variants.__getitem__,current,current,2.5,
-                ocena_dodatkowa=ocena_dodatkowa)
+                ocena_dodatkowa=ocena_dodatkowa,
+                ocena_planu=_quality)
             if solved and acceptable(solved):
                 successful_pairs+=1
                 break
