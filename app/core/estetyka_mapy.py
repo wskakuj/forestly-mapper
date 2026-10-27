@@ -62,7 +62,8 @@ def _metrics(elements):
 
 
 def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
-            maks_grup=36, maks_par=12, postep=None):
+            maks_grup=36, maks_par=12, postep=None,
+            priorytety=()):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
@@ -95,7 +96,17 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
         return score
 
     todo=sorted(grouped,key=lambda k:(-attractiveness(k),str(k)))
-    target=[key for key in todo if attractiveness(key)>0][:maks_grup]
+    # Wskazane przez kartografa wydzielenia analizuj jako pierwsze,
+    # ale pozostały budżet wciąż przeznaczaj automatycznie na całą mapę.
+    priority_labels={str(name).strip().casefold()
+                     for name in priorytety if str(name).strip()}
+    priority_keys=sorted(
+        (k for k in todo
+         if str(names.get(k,k)).strip().casefold() in priority_labels),
+        key=lambda k:str(names.get(k,k)))
+    target=list(priority_keys[:maks_grup])
+    target+=([k for k in todo if k not in target and attractiveness(k)>0]
+             [:max(0,maks_grup-len(target))])
     ranked=set(target)
     # Same błędy L2/L3 też wymagają poprawy, np. 6s.
     remaining=[k for k in todo if k not in ranked and any(
