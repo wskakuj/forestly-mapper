@@ -11,6 +11,7 @@ import math
 
 from app.core import geometria_ukladu as geo
 from app.core import silnik_grupowy as engine
+from app.core import naprawa_kaskadowa as cascade
 
 
 def _issue_key(issue):
@@ -63,14 +64,16 @@ def _metrics(elements):
 
 def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
             maks_grup=36, maks_par=12, postep=None,
-            priorytety=(), chronione=(), maks_trojek=6):
+            priorytety=(), chronione=(), maks_trojek=6,
+            maks_kaskad=0, maks_przesuniec_kaskady=7):
     """Maksymalizuj jakość tylko gdy nie gorsza od bieżącego układu.
 
     Pierwszeństwo mają najdłuższe wysięgniki w jednostkach rozmiaru
     napisu oraz wydzielenia nadal błędne. Najpierw lokalne próby,
     potem ograniczona liczba zmian sąsiadujących par.
     """
-    if maks_grup<0 or maks_par<0 or maks_trojek<0:
+    if (maks_grup<0 or maks_par<0 or maks_trojek<0 or
+            maks_kaskad<0 or maks_przesuniec_kaskady<0):
         raise ValueError("Budzet estetyki nie moze byc ujemny")
     current={e["id"]:dict(e) for e in elementy}
     all_errors=geo.waliduj_uklad(list(current.values()))
@@ -379,6 +382,27 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                 successful_triples+=1
                 break
 
+    # Wyjątkowo ciasne miejsca mogą wymagać przesunięcia nie dwóch,
+    # lecz 4-6 blokujących wydzieleń. Próbujemy kaskadę wyłącznie
+    # dla nierozwiązanych, niechronionych wydzieleń. Każda zmiana
+    # jest zatwierdzana przez ten sam pełny walidator co wcześniej.
+    cascade_report=None
+    if maks_kaskad:
+        still_invalid={current[i]["wydzielenie"]
+                       for err in all_errors for i in err["elementy"]
+                       if i in current}
+        focus=[k for k in target if k in still_invalid
+               and k not in protected][:maks_kaskad]
+        cascade_report=cascade.napraw_kaskadowo(
+            current,grouped,granice,poligony,
+            targets=focus,protected=protected,names=names,
+            ocena_dodatkowa=ocena_dodatkowa,
+            ocena_planu=_quality,
+            zaakceptuj=acceptable,
+            maks_przesuniec=maks_przesuniec_kaskady,
+            maks_poczatkow=6,maks_stanow=120,
+            postep=postep)
+
     # Informacja diagnostyczna dla ostatnich błędnych grup.
     # Nie interpretuje braku planu w skończonym zbiorze jako
     # dowodu, że układ poprawny geometrycznie nie istnieje.
@@ -431,6 +455,7 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     result=[current[e["id"]] for e in elementy]
     return result,{
         "skanowane_grupy":len(target),
+        "naprawa_kaskadowa":cascade_report,
         "diagnostyka_nierozwiazanych":unresolved_diagnostics,
         "chronione_wydzielenia":sorted(names.get(k,str(k)) for k in protected),
         "proby_wariantow":attempts,
