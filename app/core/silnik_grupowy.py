@@ -187,14 +187,20 @@ def _pozycje_wewnatrz(e, granice, margines, n=9, limit=9,
             towards=sorted(valid,key=lambda r:(
                 math.dist(srodek(r),point),r))
             take(towards,max(2,limit//3))
-    # Pozostałe miejsca rozrzucaj po wszystkich częściach konturu.
-    for rect in _rozlozone(valid, len(valid)):
-        if len(ordered)>=limit:
-            break
-        key=tuple(round(v,3) for v in rect)
-        if key not in used:
-            used.add(key)
-            ordered.append(rect)
+    # Rzeczywisty farthest-point sampling: zachowuj największy
+    # dystans do dotąd wybranych wnętrz. Samo pobranie kolejnych
+    # elementów posortowanych wg starej etykiety dalej pomijało
+    # przeciwległą krawędź poligonu.
+    free=[rect for rect in valid
+          if tuple(round(v,3) for v in rect) not in used]
+    while len(ordered)<limit and free:
+        reference=[srodek(r) for r in ordered]
+        rect=max(free,key=lambda r:(
+            min((math.dist(srodek(r),ref) for ref in reference),
+                default=math.inf),
+            r))
+        ordered.append(rect)
+        free.remove(rect)
     yield from ordered[:limit]
 
 
