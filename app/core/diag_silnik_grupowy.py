@@ -133,10 +133,13 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
               limit_grup=8, postep=None, etykiety=(),
               sprawdz_warianty=False, kara_przeciecia=0.0,
               kara_wielokrotnej_granicy=0.0, cala_mapa=False,
-              maks_trudnych=24, rundy_dodatkowe=2):
+              maks_trudnych=24, rundy_dodatkowe=2,
+              maks_estetyka=36, maks_par_estetyka=12):
     """Wczytanie danych i układ w pamięci, bez zapisu MAP."""
     if cala_mapa and etykiety:
         raise ValueError('--cala-mapa nie moze byc laczona z --etykiety')
+    if maks_estetyka < 0 or maks_par_estetyka < 0:
+        raise ValueError('Budzet estetyki musi byc nieujemny')
     if maks_trudnych < 0 or rundy_dodatkowe < 0:
         raise ValueError('Limity automatycznego dopracowania musza byc nieujemne')
     if kara_przeciecia < 0:
@@ -186,6 +189,8 @@ def diagnozuj(sciezka, skala=None, wysokosc_mm=2.5,
             szerokosc_wiazki=szerokosc_wiazki,
             maks_grupa=maks_grupa, przebiegi=przebiegi,
             maks_trudnych=maks_trudnych, rundy_dodatkowe=rundy_dodatkowe,
+            maks_estetyka=maks_estetyka,
+            maks_par_estetyka=maks_par_estetyka,
             postep=pokaz, ocena_dodatkowa=dodatkowy_koszt)
     else:
         po, raport = engine.optymalizuj(
@@ -279,6 +284,10 @@ def main(argv=None):
                    help='Ile nierozwiazanych grup sprobowac dodatkowo (domyslnie 24)')
     p.add_argument('--rundy-dodatkowe',type=int,default=2,
                    help='Liczba dodatkowych rund dla trudnych grup (domyslnie 2)')
+    p.add_argument('--maks-estetyka',type=int,default=36,
+                   help='Ile grup dopracowac wizualnie po naprawie kolizji (0 = pomin)')
+    p.add_argument('--maks-par-estetyka',type=int,default=12,
+                   help='Ile przyjetych wspolnych korekt sasiadow w estetyce (0 = tylko solo)')
     p.add_argument("--etykiety", nargs="+", default=(),
                    help="Analizuj tylko wskazane A1 (np. --etykiety 3h 4a 4b 4c); reszta pozostaje przeszkoda")
     p.add_argument('--kara-przeciecia', type=float, default=0.0,
@@ -311,6 +320,8 @@ def main(argv=None):
             p.error('--map-kopia wymaga pliku .MAP')
         if dest.resolve()==Path(args.mapa).resolve() or dest.exists():
             p.error('Kopia juz istnieje albo wskazano oryginal; podaj NOWA nazwe')
+    if args.maks_estetyka < 0 or args.maks_par_estetyka < 0:
+        p.error('--maks-estetyka i --maks-par-estetyka musza byc nieujemne')
     if args.maks_trudnych < 0 or args.rundy_dodatkowe < 0:
         p.error('--maks-trudnych i --rundy-dodatkowe nie moga byc ujemne')
     if args.cala_mapa and args.etykiety:
@@ -325,6 +336,10 @@ def main(argv=None):
             print("Wczytano:", event["napisy"], "napisow;",
                   event["wydzielenia"], "wydzielen; rozpoczynam analize...",
                   flush=True)
+        elif event.get("etap") == "estetyka":
+            print("Estetyka %d/%d; %s (%s)" % (
+                event["indeks"],event["liczba_grup"],
+                event.get("nazwa","?"),event["wydzielenie"]),flush=True)
         elif event.get("etap") == "dopracowanie":
             print("Dopracowanie runda %d: grupa %d; %s (%s)" % (
                 event["runda"], event["rozpatrzone_lacznie"],
@@ -347,7 +362,9 @@ def main(argv=None):
             kara_wielokrotnej_granicy=args.kara_wielokrotnej_granicy,
             cala_mapa=args.cala_mapa,
             maks_trudnych=args.maks_trudnych,
-            rundy_dodatkowe=args.rundy_dodatkowe)
+            rundy_dodatkowe=args.rundy_dodatkowe,
+            maks_estetyka=args.maks_estetyka,
+            maks_par_estetyka=args.maks_par_estetyka)
     except ValueError as exc:
         p.error(str(exc))
     print("MAP (tylko odczyt):", result["plik_wejsciowy"])
@@ -361,6 +378,13 @@ def main(argv=None):
             info["uuid"], info["kandydaci"], info["liczba_planow_w_limicie"],
             info["plany_bez_kolizji_z_innymi_etykietami"]))
     print("Nierozwiazane problemy:", result["liczba_nierozwiazanych"])
+    est=result["raport_silnika"].get("dopracowanie_estetyki")
+    if est:
+        print("ESTETYKA: poprawki %d | wysiegniki %d -> %d | dlugosc %.1f -> %.1f" % (
+            est["przyjete_poprawki"],est["przed"]["liczba_wysiegnikow"],
+            est["po"]["liczba_wysiegnikow"],
+            est["przed"]["laczna_dlugosc_wysiegnikow"],
+            est["po"]["laczna_dlugosc_wysiegnikow"]))
     if result["skutecznosc_calej_mapy"] is not None:
         stats = result["skutecznosc_calej_mapy"]
         print("NAPISY BEZ PROBLEMOW: %d/%d (przed: %d)" % (
