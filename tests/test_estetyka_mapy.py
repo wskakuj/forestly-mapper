@@ -75,6 +75,29 @@ class AestheticTests(unittest.TestCase):
         self.assertEqual(reviewed,["b"])
         self.assertEqual(report["skanowane_grupy"],1)
 
+    def test_approved_layout_is_immutable_even_if_priority_and_neighbor(self):
+        pa=[(0,0),(100,0),(100,100),(0,100)]
+        pb=[(250,0),(350,0),(350,100),(250,100)]
+        a=label("a",(130,25,160,45),pa,((145,45),(50,50)))
+        b=label("b",(380,25,410,45),pb,((395,45),(300,50)))
+        inner_a=dict(a,prostokat=(20,20,50,40),wysiegnik=None)
+        inner_b=dict(b,prostokat=(270,20,300,40),wysiegnik=None)
+        calls=[]
+        def candidates(group,*args,**kwargs):
+            calls.append(group[0]["wydzielenie"])
+            return [[inner_a]] if group[0]["wydzielenie"]=="a" else [[inner_b]]
+        with patch.object(aesthetic.engine,"opcje_wydzielenia",
+                          side_effect=candidates):
+            out,report=aesthetic.dopracuj(
+                [a,b],[pa,pb],nazwy={"a":"4c","b":"6o"},
+                priorytety=["4c","6o"],chronione=["4c"],
+                maks_grup=2,maks_par=0)
+        self.assertNotIn("a",calls)
+        self.assertEqual(out[0]["prostokat"],a["prostokat"])
+        self.assertEqual(out[0]["wysiegnik"],a["wysiegnik"])
+        self.assertIsNone(out[1]["wysiegnik"])
+        self.assertEqual(report["chronione_wydzielenia"],["4c"])
+
     def test_zero_budget_leaves_source_exact(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         label_a=label("a",(10,10,30,30),poly)
