@@ -94,7 +94,7 @@ def uloz_cala_mape(elementy, poligony, *, nazwy=None,
                    ocena_dodatkowa=None, maks_trudnych=24,
                    rundy_dodatkowe=2, postep=None,
                    maks_estetyka=36, maks_par_estetyka=12,
-                   priorytety_estetyka=()):
+                   priorytety_estetyka=(), chronione_estetyka=()):
     """Wielostopniowa optymalizacja bez konieczności ręcznego V14, V15...
 
     Etap 1: wszystkie konfliktowe grupy, bez limitu liczby skupisk.
@@ -205,7 +205,8 @@ def uloz_cala_mape(elementy, poligony, *, nazwy=None,
             current, poligony, nazwy=names,
             ocena_dodatkowa=ocena_dodatkowa,
             maks_grup=maks_estetyka, maks_par=maks_par_estetyka,
-            priorytety=priorytety_estetyka, postep=postep)
+            priorytety=priorytety_estetyka,
+            chronione=chronione_estetyka, postep=postep)
         current_errors = _problemy(current)
 
     report = {
