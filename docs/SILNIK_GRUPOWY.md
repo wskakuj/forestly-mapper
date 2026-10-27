@@ -1042,3 +1042,53 @@ Liczbę zaakceptowanych zmian, długości i kolizje porównaj
 z poprzednim JSON. Nowy moduł poprawia **zestaw dostępnych
 propozycji i ranking**, nie gwarantuje, że wszystkie
 kandydatury są możliwe na rzeczywistej mapie.
+
+
+## Zatwierdzone wydzielenia i poprawa 6s z V2
+
+Wynik \`BYSLAW_ESTETYKA_V2_auto.json\`:
+- 416 etykiet, 410 poprawnych według przybliżonego modelu;
+- 7 nierozwiązanych problemów w dokładnie czterech wydzieleniach:
+  \`6s\` (2), \`6gx\` (3), \`3i\` (1), \`3s\` (1);
+- 143 wysięgniki, 6392,26 m długości łącznej
+  (w pierwszej automatyzacji było 154 i 8386,88 m);
+- 81 dodatkowych punktów przecięć wysięgników z obiektami MAP;
+- położenie \`6s\`, \`6gx\`, \`3i\`, \`3s\` nie zmieniło się względem
+  raportu bazowego.
+
+Użytkownik sprawdził w GEO-MAP i zaakceptował estetykę wszystkich
+11 wielokonturowych wydzieleń: \`4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h\`.
+
+Dodałem \`--chron-estetyka\` do etapu estetyki:
+- wyklucza zaakceptowane wydzielenia z grup do przestawienia;
+- wyklucza je także jako drugie wydzielenie we wspólnej
+  optymalizacji sąsiadów;
+- przyjęcie wariantu z choćby jednym chronionym UUID jest
+  dodatkowo zabronione;
+- raport estetyki zwraca \`chronione_wydzielenia\`.
+  Parametr dotyczy **etapu estetyki**, dlatego do bezpiecznego
+  zachowania zatwierdzonych miejsc w bieżącej mapie użyj
+  **wznowienia z V2**.
+
+Dodatkowo naprawiono błąd pomijania nierozwiązanych wydzieleń
+bez wysięgników na etapie wspólnego przestawiania.
+Poprzednio \`6s\` było całkowicie pomijane w tej fazie,
+bo obie etykiety nie miały wysięgnika, mimo iż nachodzą na
+siebie. Teraz każde wydzielenie z choć jednym aktualnym
+problemem geometrycznym jest uprawnione do próby z sąsiadami.
+Nie gwarantuje to znalezienia rozwiązania przy ograniczonej
+puli wariantów i bez potwierdzonego fontu GEO-MAP.
+
+Zachowaj poprawny poprzedni wynik, koncentrując następny
+przebieg na czterech nierozwiązanych grupach:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_ESTETYKA_V2_auto.json" --maks-estetyka 24 --maks-par-estetyka 24 --priorytety-estetyka 6s 6gx 3i 3s 6t --chron-estetyka 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_ZATWIERDZONE_I_NAPRAWY.json" --map-kopia "01_BYSŁAW_ZATWIERDZONE_NAPRAWY_TEST.MAP"
+\`\`\`
+
+Nie nadpisuj starego raportu ani poprzedniej kopii MAP.
+Nowy test jest celowo krótki: drugi etap estetyki i naprawy,
+nie pełny restart skanowania.
