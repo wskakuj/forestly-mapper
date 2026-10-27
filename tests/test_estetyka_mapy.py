@@ -59,6 +59,22 @@ class AestheticTests(unittest.TestCase):
         self.assertLess(aesthetic._quality([closer]),
                         aesthetic._quality([outside]))
 
+    def test_requested_label_is_checked_before_other_long_leaders(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        a=label("a",(130,25,160,45),poly,((145,45),(50,50)))
+        b=label("b",(170,25,200,45),poly,((185,45),(50,50)))
+        reviewed=[]
+        def choices(group,*args,**kwargs):
+            reviewed.append(group[0]["wydzielenie"])
+            return []
+        with patch.object(aesthetic.engine,"opcje_wydzielenia",
+                          side_effect=choices):
+            _,report=aesthetic.dopracuj(
+                [a,b],[poly],nazwy={"a":"6j","b":"6k"},
+                priorytety=["6k"],maks_grup=1,maks_par=0)
+        self.assertEqual(reviewed,["b"])
+        self.assertEqual(report["skanowane_grupy"],1)
+
     def test_zero_budget_leaves_source_exact(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         label_a=label("a",(10,10,30,30),poly)
