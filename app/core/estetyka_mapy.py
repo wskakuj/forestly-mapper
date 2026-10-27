@@ -276,9 +276,48 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
                 successful_pairs+=1
                 break
 
+    # Informacja diagnostyczna dla ostatnich błędnych grup.
+    # Nie interpretuje braku planu w skończonym zbiorze jako
+    # dowodu, że układ poprawny geometrycznie nie istnieje.
+    unresolved_diagnostics=[]
+    remaining=Counter(current[i]["wydzielenie"]
+                      for issue in all_errors for i in issue["elementy"]
+                      if i in current)
+    for key in sorted(remaining,key=lambda k:(-remaining[k],str(k)))[:8]:
+        if key in protected:
+            continue
+        incumbent=pair_group([key])
+        choices=engine.opcje_wydzielenia(
+            incumbent,granice,poligony,limit=24,
+            ocena_dodatkowa=ocena_dodatkowa)
+        blockers=engine._blokady_planow(choices,current,key,2.5)
+        clean=[p for blocked,p in blockers if not blocked]
+        penalty_current=(ocena_dodatkowa(incumbent)
+                         if ocena_dodatkowa else 0.0)
+        penalty_clean=[
+            ocena_dodatkowa(p) if ocena_dodatkowa else 0.0
+            for p in clean]
+        frequent=Counter(
+            b for blocked,_ in blockers for b in blocked)
+        unresolved_diagnostics.append({
+            "wydzielenie":str(names.get(key,key)),
+            "liczba_problemow":remaining[key],
+            "liczba_wygenerowanych_planow":len(choices),
+            "plany_bez_blokad_napisow":len(clean),
+            "plany_bez_blokad_i_wzrostu_kary_GIS":
+                sum(x<=penalty_current+1e-6 for x in penalty_clean),
+            "biezaca_kara_GIS":round(penalty_current,2),
+            "najmniejsza_kara_wolnego_planu_GIS":
+                round(min(penalty_clean),2) if penalty_clean else None,
+            "najczestsze_blokady_wariantow":[
+                {"wydzielenie":str(names.get(k,k)), "ile":count}
+                for k,count in frequent.most_common(5)],
+            "uwaga":"Tylko skrocony zestaw 24 wariantow; brak nie dowodzi niemozliwosci poprawy."
+        })
     result=[current[e["id"]] for e in elementy]
     return result,{
         "skanowane_grupy":len(target),
+        "diagnostyka_nierozwiazanych":unresolved_diagnostics,
         "chronione_wydzielenia":sorted(names.get(k,str(k)) for k in protected),
         "proby_wariantow":attempts,
         "przyjete_poprawki":accepted,
