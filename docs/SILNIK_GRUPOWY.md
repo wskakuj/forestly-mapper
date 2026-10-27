@@ -1202,3 +1202,61 @@ ale może być cięższy niż zwykła próba estetyki.
 Kopia GEO-MAP pozostaje osobnym plikiem testowym,
 a usunięcie błędów nie jest jeszcze potwierdzone
 przez wykonanie na rzeczywistej mapie.
+
+
+## Trójki sąsiadów: faktyczne blokady zamiast coraz większej puli
+
+Najnowszy pomiar \`BYSLAW_RATUNEK_ZEWNETRZNY.json\`:
+- 411/416 napisów bez błędów; 265/268 wydzieleń bez błędów;
+- nadal 6 problemów (\`6gx:3\`, \`6s:2\`, \`3s:1\`);
+- 144 wysięgniki, 6407,37 m łącznej długości;
+- zewnętrzny generator ratunkowy zgłosił odpowiednio
+  **25**, **56**, **72** warianty, lecz wszystkie zostały
+  zablokowane przez napisy w pozostałych wydzieleniach;
+- automatyczna analiza nie zmieniła niczego i zachowała
+  wszystkie 11 wydzieleń zatwierdzonych przez kartografa.
+
+Wcześniejsze przesuwanie **dwóch** wydzieleń nie mogło
+usunąć naraz blokad od dwóch różnych jednostek.
+Nowy etap \`--maks-trojek-estetyka\`:
+1. Sprawdza propozycje dla aktualnie niepoprawnego wydzielenia
+   i wyznacza **konkretny** zbiór wydzieleń, z którymi plan koliduje.
+2. Jeżeli plan blokują najwyżej dwie inne *niechronione*
+   jednostki, tworzy grupę trzech do wspólnego rozwiązania
+   metodą ograniczonego solvera dokładnego.
+3. Dzieli limit na każde trudne wydzielenie,
+   domyślnie maksimum 6 prób trójek łącznie.
+4. Każdemu sąsiadowi pozostawia jako wariant jego
+   obecne, poprawne ułożenie, jeśli takie istnieje.
+5. Akceptuje wynik wyłącznie bez nowych kolizji, bez
+   zwiększenia kary GIS i bez zmiany chronionych UUID.
+6. Rejestruje \`proby_trojek_sasiadow\`,
+   \`ulepszone_trojki_sasiadow\`,
+   \`proby_trojek_na_wydzielenie\` i powody pominięć.
+7. W \`diagnostyka_nierozwiazanych\` rozbija
+   liczbę blokujących wydzieleń na histogram oraz
+   \`warianty_potencjalnie_dla_trojki\`. Dzięki temu
+   wiadomo, czy trójki w ogóle mogą wystarczyć.
+
+Test syntetyczny potwierdza przypadek, w którym dwaj
+sąsiedzi równocześnie zasłaniają jedyny prawidłowy
+plan L2/L3, a wspólna trójka odnajduje poprawne
+położenie. Osobny test potwierdza ochronę zatwierdzonej
+jednostki przed użyciem jako sąsiad.
+
+Aby sprawdzić efekt na prawdziwej mapie, **nie powtarzaj**
+poprzedniego pełnego skanowania ani 12 nieudanych duetów:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_RATUNEK_ZEWNETRZNY.json" --maks-estetyka 3 --maks-par-estetyka 0 --maks-trojek-estetyka 6 --priorytety-estetyka 6gx 6s 3s --chron-estetyka 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_TROJKI_RATUNEK.json" --map-kopia "01_BYSŁAW_TROJKI_TEST.MAP"
+\`\`\`
+
+Uwaga: wynik 100% poprawności nie jest gwarantowany,
+a model wymiarów czcionki pozostaje szacunkowy.
+Jeśli wszystkie kandydatury wymagają przesunięcia
+więcej niż dwóch innych jednostek jednocześnie,
+raport pokaże \`wiecej_niz_dwa_blokujace\` i
+nie trzeba ponawiać trójkowego solvera.
