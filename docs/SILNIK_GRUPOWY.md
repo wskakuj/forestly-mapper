@@ -903,3 +903,79 @@ wyczerpany budżet prób od braku nowych możliwych pozycji.
 zostały **przeskanowane**; nie znaczy, że wszystkie
 udało się naprawić. Osiągnięcie blisko 100% automatyzacji
 jest celem, a nie potwierdzonym wynikiem tego etapu.
+
+
+## Etap jakości kartograficznej — drugi przebieg bez powtarzania całej mapy
+
+Pierwszy wynik pełnej mapy BYSŁAW (\`BYSLAW_CALA_MAPA_auto.json\`):
+416 etykiet, 268 wydzieleń; 176→410 etykiet bez modelowanych
+problemów, 95→264 wydzieleń bez problemów, 280→7 zgłoszeń.
+259 etykiet zostało przesuniętych lub otrzymało wysięgnik.
+Dalej niepoprawne grupy: \`6gx\` (3 zgłoszenia),
+\`6s\` (2), \`3i\` (1), \`3s\` (1).
+Raport wykazuje również 90 dodatkowych przekroczeń
+różnych obiektów mapy przez wysięgniki. Te przekroczenia
+są ostrzeżeniami, nie wszystkie są przeszkodami GIS.
+
+Oględziny GEO-MAP wskazały na osobny problem: estetykę
+**poprawnych** wg dotychczasowego modelu lokalizacji.
+Przykłady:
+- \`6s\` wciąż ma konflikt między L2/L3, obecna
+  litera nie znajduje się tam, gdzie czytelnie pasuje do opisu;
+- opis \`6k\` ma wysięgnik około 95 m, a \`6j\`
+  około 152 m; sąsiednie wydzielenia mogłyby wspólnie
+  przesunąć napisy i skrócić obie linie;
+- \`3c\`, \`4r\`, \`4p\`, \`4t\` mają opis z wysięgnikiem,
+  mimo widocznej przestrzeni wewnątrz poligonów.
+
+Dotychczas \`optymalizuj\` pomijał już rozwiązane wydzielenia:
+brak kolizji nie powodował dalszego skracania linii.
+Nowy moduł \`app/core/estetyka_mapy.py\` po usunięciu kolizji:
+1. Przegląda obciążone wysięgnikami lub wciąż konfliktowe
+   wydzielenia; priorytety kierownika mapy można przekazać
+   przez \`--priorytety-estetyka\`.
+2. Rozważa rozszerzone do 18 poprawne pozycje wewnętrzne
+   L2/L3, zamiast tylko najbliższych 9, oraz warianty
+   zewnętrzne.
+3. Ocenia **bezwzględnie** ilość i długość wysięgników
+   (z dodatkową karą za bardzo długie), oraz odstępy
+   L2/L3 **z tego samego wydzielenia**.
+4. Dodatkowo próbuje przesuwać obok siebie dwa wydzielenia
+   jednym wspólnym planem, kiedy pierwszy etap solo nie
+   da wystarczającej poprawy.
+5. Przyjmuje plan wyłącznie gdy nie tworzy nowych kolizji
+   względem bieżącego wyniku i **nie zwiększa** naliczanej
+   kary GIS za przecięcia. W przypadku gdy zostaje usunięty
+   istniejący problem, priorytetem jest naprawa błędu;
+   w przeciwnym razie musi się poprawić ocena estetyki.
+
+Z uwagi na czas obliczeń opcje \`--maks-estetyka\` (domyślnie
+36) i \`--maks-par-estetyka\` (domyślnie 12 prób) ograniczają
+dodatkowy przebieg, nie liczbę już sprawdzonych wydzieleń
+na mapie. \`--maks-estetyka 0\` wyłącza drugi etap.
+
+**Wznawianie:** nie trzeba powtarzać ponad 200 iteracji
+pierwszego etapu. Użyj \`--bazowy-json\` aby odtworzyć
+wszystkie proponowane pozycje z poprzedniego pełnego
+raportu na NIEZMIENIONYM oryginalnym MAP.
+Weryfikowane są SHA-256 oryginalnego MAP,
+skala, wysokość pisma, ID, pierwotne prostokąty
+i liczba konfliktów odtworzonego wyniku.
+Następnie nowy etap estetyki pracuje tylko na
+zatwierdzonych już pozycjach i zapisuje
+**nowy** raport oraz **nową** testową kopię MAP.
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+
+py -m app.core.diag_silnik_grupowy "01_BYSŁAW_z_opisami.MAP" --skala 4000 --cala-mapa --bazowy-json "BYSLAW_CALA_MAPA_auto.json" --maks-estetyka 48 --maks-par-estetyka 12 --priorytety-estetyka 6s 6k 6j 3c 4r 4p 4t --kara-przeciecia 25 --kara-wielokrotnej-granicy 50 --json "BYSLAW_ESTETYKA_auto.json" --map-kopia "01_BYSŁAW_ESTETYKA_TEST.MAP"
+\`\`\`
+
+Otwórz nową kopię w GEO-MAP i sprawdź m.in. 6s, 6k/6j,
+3c, 4r, 4p i 4t. Testy syntetyczne i odczyt testowej kopii
+nie potwierdzają jeszcze poprawności wyglądu realnej mapy.
+Klasyczny raport ilościowy 410/416 nie dowodzi idealnej
+jakości drukarskiej: kolejne kryteria będą wymagały
+weryfikacji praktycznej przez kartografa.
