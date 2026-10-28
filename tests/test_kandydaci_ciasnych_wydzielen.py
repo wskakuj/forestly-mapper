@@ -130,6 +130,31 @@ class CandidatesTests(unittest.TestCase):
             k.geo.punkt_w_poligonie(e["wysiegnik"][1],poly)
             for plan in plans for e in plan))
 
+    def test_real_narrow_6gx_contour_has_nearby_exterior_layouts(self):
+        # Fragment geometrii 6gx wyodrebniony z oryginalnego BYSLAW.
+        # Uklad lokalny ma znalezc bliskie opcje z wysiegnikami;
+        # nie wolno wymagac zmieszczenia dlugiego L3 we wnetrzu.
+        ring=[
+            (195.55,75.75),(172.45,50.88),(158.49,35.86),
+            (131.44,6.54),(116.37,-10.84),(55.93,42.46),
+            (30.60,56.87),(52.17,38.38),(118.49,-22.0),
+            (139.74,-0.97),(207.28,68.09),(228.287,87.017),
+            (247.88,104.67),(234.07,117.08)]
+        letter=lab("6gx","L2","litera",(125,10,141.2,39.88))
+        desc=lab("6gx","L3","opis",(130,-30,157,186))
+        for x in (letter,desc):
+            x["poligon"]=ring
+        plans=k._lokalne_plany_waskiego_poligonu(
+            [letter,desc],maks_odleglosc=145,
+            maks_wysiegnik=130,limit=250)
+        self.assertTrue(plans, "6gx nadal nie ma zadnych bliskich planow")
+        self.assertTrue(all(not k.geo.waliduj_uklad(plan)
+                            for plan in plans))
+        self.assertTrue(all(
+            k.engine.odleglosc_boxow(
+                e["prostokat"],k.engine.bbox(ring))<=145
+            for plan in plans for e in plan))
+
     def test_long_text_can_be_close_to_border_even_if_center_far(self):
         poly=[(0,0),(220,0),(220,120),(0,120)]
         letter=lab("6gx","L2","litera",(110,-25,126,-5))
