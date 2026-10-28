@@ -38,7 +38,10 @@ class CandidatesTests(unittest.TestCase):
             p=[a,dict(d,prostokat=(x,y,x+15,y+15),
                       wysiegnik=((x+7.5,y+15),(50,50)))]
             opts.append(p)
-        selected=k.wybierz_kandydatow(opts,[],poly,ile=3)
+        selected=k.wybierz_kandydatow(
+            opts,[],poly,ile=3,
+            maks_odleglosc_srodka=240,
+            maks_dlugosc_wysiegnika=240)
         self.assertEqual(len(selected),3)
         self.assertEqual(len({x[1] for x in selected}),3)
 
@@ -123,9 +126,9 @@ class CandidatesTests(unittest.TestCase):
                  dict(original[2],prostokat=(55,50,70,70))]
         proposal=[
             dict(current[0],prostokat=(120,120,130,135),
-                 wysiegnik=((125,135),(50,50))),
+                 wysiegnik=((125,135),(100,100))),
             dict(current[1],prostokat=(150,120,180,150),
-                 wysiegnik=((165,150),(50,50)))]
+                 wysiegnik=((165,150),(100,100)))]
         with tempfile.TemporaryDirectory() as td:
             base=Path(td)/"before.json"
             base.write_text(json.dumps({"skala":4000,"wysokosc_mm":2.5,
