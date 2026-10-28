@@ -395,11 +395,17 @@ def main(argv=None):
     if (not 0<a.wspolczynnik_oceny<=1 or a.limit_opcji<1 or a.ile<1
             or a.maks_odleglosc<=0 or a.maks_wysiegnik<=0):
         p.error("Nieprawidlowe limity/wspolczynnik")
-    result=przygotuj(a.mapa,a.bazowy_json,a.wydzielenie,a.prefix,
-                     ile=a.ile,factor=a.wspolczynnik_oceny,
-                     candidate_limit=a.limit_opcji,
-                     maks_odleglosc_srodka=a.maks_odleglosc,
-                     maks_dlugosc_wysiegnika=a.maks_wysiegnik)
+    try:
+        result=przygotuj(a.mapa,a.bazowy_json,a.wydzielenie,a.prefix,
+                         ile=a.ile,factor=a.wspolczynnik_oceny,
+                         candidate_limit=a.limit_opcji,
+                         maks_odleglosc_srodka=a.maks_odleglosc,
+                         maks_dlugosc_wysiegnika=a.maks_wysiegnik)
+    except ValueError as exc:
+        # Brak propozycji po rygorystycznej kontroli jest zwykłym
+        # wynikiem diagnostyki, a nie awarią aplikacji.
+        p.exit(2,"BRAK KANDYDATOW - nie zapisano kopii MAP.\n"+
+               str(exc)+"\n")
     print("KANDYDACI do recznej oceny:",len(result["warianty"]))
     print("Wygenerowane plany:",result["liczba_planow_wygenerowanych"])
     print("Filtry:",result["filtry_jakosci"])
