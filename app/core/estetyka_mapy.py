@@ -187,14 +187,72 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     # obwiedni fontu, ale nie wolno dodać żadnego nowego błędu.
     imported_wzorce=[]
     rejected_wzorce=[]
+    imported_with_warnings=[]
+    rejection_reasons={}
     for key,plan in (wzorce or {}).items():
+        name=str(names.get(key,key))
         if key not in grouped or key in protected:
-            rejected_wzorce.append(str(names.get(key,key)))
+            rejected_wzorce.append(name)
+            rejection_reasons[name]="nieznane_lub_chronione_wydzielenie"
             continue
-        if acceptable(plan):
-            imported_wzorce.append(str(names.get(key,key)))
-        else:
-            rejected_wzorce.append(str(names.get(key,key)))
+        # Wyłącznie plik MAP jawnie zatwierdzony przez kartografa,
+        # wcześniej zweryfikowany przez wzorce_reczne.wczytaj_wzorce.
+        # Model pełnych prostokątów obwiedni glifów GEO-MAP potrafi
+        # fałszywie zgłaszać nawet dwa zachowane błędy, choć realny
+        # wydruk nie ma kolizji (potwierdzone dla 6s na oryginalnej
+        # mapie BYSŁAW). Nie wolno na tej podstawie odrzucać wzorca
+        # ani też automatycznie twierdzić, że błędy modelu zniknęły.
+        original=pair_group([key])
+        expected={e["id"] for e in original}
+        updates={e["id"]:dict(e) for e in plan}
+        if (len(plan)!=len(expected) or set(updates)!=expected or
+                any(e["wydzielenie"]!=key for e in plan)):
+            rejected_wzorce.append(name)
+            rejection_reasons[name]="niepelny_lub_obcy_plan_wzorca"
+            continue
+        changed=any(
+            (tuple(updates[e["id"]]["prostokat"])!=tuple(e["prostokat"])
+             or updates[e["id"]].get("wysiegnik")!=e.get("wysiegnik"))
+            for e in original)
+        if not changed:
+            rejected_wzorce.append(name)
+            rejection_reasons[name]="wzorzec_identczny_z_baza"
+            continue
+        old_penalty=(ocena_dodatkowa(original)
+                     if ocena_dodatkowa else 0.0)
+        new_penalty=(ocena_dodatkowa(plan)
+                     if ocena_dodatkowa else 0.0)
+        if new_penalty>old_penalty+1e-6:
+            rejected_wzorce.append(name)
+            rejection_reasons[name]="wzrost_kary_GIS"
+            continue
+        proposed=[updates.get(e["id"],e) for e in current.values()]
+        problems=geo.waliduj_uklad(proposed)
+        after_keys={_issue_key(issue) for issue in problems}
+        if not after_keys.issubset(old_keys):
+            rejected_wzorce.append(name)
+            rejection_reasons[name]="nowe_bledy_geometrii"
+            continue
+        residual=sorted((str(t),tuple(ids)) for t,ids in
+                        (after_keys & {k for k in old_keys
+                         if any(uid in expected for uid in k[1])}))
+        for ident,e in updates.items():
+            current[ident]=e
+        all_errors,old_keys=problems,after_keys
+        accepted+=1
+        improved_labels.append(name)
+        imported_wzorce.append(name)
+        if residual:
+            imported_with_warnings.append({
+                "wydzielenie":name,
+                "pozostale_ostrzezenia_modelu":[
+                    {"typ":typ,"elementy":list(ids)}
+                    for typ,ids in residual],
+                "status":"zatwierdzony_w_GEO_MAP_mimo_niedokladnego_modelu"
+            })
+        # Nigdy ponownie nie przenoś już ręcznie potwierdzonego
+        # wzorca w pozostałych etapach optymalizacji tego przebiegu.
+        protected.add(key)
 
     for index,key in enumerate(target,1):
         attempts+=1
@@ -494,7 +552,9 @@ def dopracuj(elementy, poligony, *, nazwy=None, ocena_dodatkowa=None,
     return result,{
         "skanowane_grupy":len(target),
         "zastosowane_wzorce_reczne":imported_wzorce,
+        "zastosowane_wzorce_z_ostrzezeniami_modelu":imported_with_warnings,
         "odrzucone_wzorce_reczne":rejected_wzorce,
+        "powody_odrzucenia_wzorcow":rejection_reasons,
         "naprawa_kaskadowa":cascade_report,
         "diagnostyka_nierozwiazanych":unresolved_diagnostics,
         "chronione_wydzielenia":sorted(names.get(k,str(k)) for k in protected),
