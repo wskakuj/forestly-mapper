@@ -1580,3 +1580,56 @@ rzeczywistego fontu Simplex.SHX; aby go
 zweryfikować, potrzebne będą kolejne
 ręcznie zaakceptowane przykłady / rzeczywisty
 pomiar konturów glifów w GEO-MAP.
+
+
+## 6gx – odrzucanie niewidocznych propozycji i kolizji z 6fx
+
+Ocena operatora dwóch pierwszych plików \`BYSLAW_6GX_PROBA\`:
+- \`01.MAP\`: litery i opisu w ogóle nie widać w oglądanym
+  obszarze mapy – kandydat jest bezużyteczny;
+- \`02.MAP\`: napis za daleko od własnego wydzielenia i
+  nowy wysięgnik przecina istniejący wysięgnik **6fx**.
+
+W \`app/core/kandydaci_ciasnych_wydzielen.py\` brakowało
+sprawdzania przecinania DWA istniejących wysięgników.
+Dotychczas ocena liczyła tylko przypadki, w których
+nowy wysięgnik przechodził przez cudzy prostokąt napisu.
+Warianty mogły więc być syntaktycznie zapisane, lecz
+kartograficznie nieprzydatne.
+
+Poprawiono selekcję kandydatów:
+- sprawdzaj przecięcia nowego wysięgnika z
+  **każdym obecnym wysięgnikiem** z bazowego JSON;
+- sprawdzaj także sytuację odwrotną: istniejący
+  wysięgnik przechodzi przez nowy napis;
+- bezwzględnie odrzucaj nowe wysięgniki przechodzące
+  przez sąsiednie opisy;
+- domyślnie nie proponuj napisów, których środek
+  leży dalej niż **145 m** od środka bbox wydzielenia
+  i linii prowadzących dłuższych niż **130 m**.
+  To heurystyka czytelności przy 1:4000, parametry
+  jawnie dostępne jako \`--maks-odleglosc\` i
+  \`--maks-wysiegnik\`, nie absolutny standard;
+- \`filtry_jakosci\` raportuje, ile propozycji
+  odrzucono, i rozróżnia powody;
+- jeżeli nie ma żadnego kandydata po filtrach,
+  nie zapisuj żadnego MAP i zgłoś wyraźny błąd
+  zamiast udawać, że znaleziono dobre cztery układy.
+
+Do oceny tylko lokalnego \`6gx\`, z zachowaniem
+wszystkich zatwierdzonych napisów i osobnym prefiksem:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.kandydaci_ciasnych_wydzielen "01_BYSŁAW_z_opisami.MAP" --bazowy-json "BYSLAW_6S_Z_WZORCA_V2.json" --wydzielenie 6gx --ile 4 --limit-opcji 144 --maks-odleglosc 145 --maks-wysiegnik 130 --prefix "BYSLAW_6GX_BEZ_KRZYZOWAN_V2"
+\`\`\`
+
+W zależności od liczby planów, które rzeczywiście przejdą
+filtry, mogą powstać **mniej niż cztery** pliki.
+Kandydaci pozostają eksperymentalni, bez gwarancji,
+że pełne glify GEO-MAP będą idealnie niekolidujące.
+Jeżeli nie zostanie żaden, trzeba zmienić **sposób
+generowania lokalnych wariantów**, nie luzować w ciemno
+warunków dla znanych źle wyglądających położeń.
