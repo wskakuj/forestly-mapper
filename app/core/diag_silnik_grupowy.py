@@ -480,6 +480,18 @@ def main(argv=None):
             est["po"]["liczba_wysiegnikow"],
             est["przed"]["laczna_dlugosc_wysiegnikow"],
             est["po"]["laczna_dlugosc_wysiegnikow"]))
+    if est:
+        if est.get("zastosowane_wzorce_reczne"):
+            print("WZORCE RECZNE ZASTOSOWANE:",
+                  ", ".join(est["zastosowane_wzorce_reczne"]))
+        if est.get("zastosowane_wzorce_z_ostrzezeniami_modelu"):
+            print("UWAGA: zatwierdzony uklad GEO-MAP zostal zapisany,"
+                  " ale prostokatny model fontu nadal zglasza bledy."
+                  " Oceniaj ten wzorzec WIZUALNIE w GEO-MAP.")
+        if est.get("odrzucone_wzorce_reczne"):
+            print("WZORCE RECZNE ODRZUCONE:",
+                  ", ".join(est["odrzucone_wzorce_reczne"]),
+                  est.get("powody_odrzucenia_wzorcow",{}))
     if est and est.get("naprawa_kaskadowa") is not None:
         kres=est["naprawa_kaskadowa"]
         print("KASKADA: cele %d | zaakceptowane %d | sprawdzone stany %d" % (
