@@ -98,6 +98,39 @@ class CandidatesTests(unittest.TestCase):
                 [[letter,desc]],[],poly,diagnostyka=report),[])
         self.assertEqual(report["odrzucone_powody"]["za_dlugi_wysiegnik"],1)
 
+    def test_local_sampler_adds_nearby_options_when_general_engine_only_finds_remote(self):
+        # Bardzo dlugi L3 i waski poligon, reprezentatywne dla 6gx.
+        # Generowanie nie moze zalezec od zewnetrznej siatki ogolnego
+        # silnika, ktora znajduje jedynie pozycje wiele setek metrow
+        # od konturu.
+        poly=[(0,0),(180,0),(180,35),(0,35)]
+        letter=lab("6gx","L2","litera",(80,5,96,25))
+        description=lab("6gx","L3","opis",(70,-60,97,155))
+        letter["poligon"]=poly
+        description["poligon"]=poly
+        plans=k._lokalne_plany_waskiego_poligonu(
+            [letter,description],maks_odleglosc=145,
+            maks_wysiegnik=130)
+        self.assertTrue(plans)
+        self.assertTrue(any(
+            all(k._center(e["prostokat"]) is not None for e in plan)
+            for plan in plans))
+        self.assertTrue(all(not k.geo.waliduj_uklad(plan)
+                            for plan in plans))
+        bounds=k.engine.bbox(poly)
+        center=k._center(bounds)
+        self.assertTrue(all(
+            k.math.dist(k._center(e["prostokat"]),center)<=145
+            for plan in plans for e in plan))
+        self.assertTrue(all(
+            not e["wysiegnik"] or
+            k.math.dist(*e["wysiegnik"])<=130
+            for plan in plans for e in plan))
+        self.assertTrue(all(
+            not e.get("wysiegnik") or
+            k.geo.punkt_w_poligonie(e["wysiegnik"][1],poly)
+            for plan in plans for e in plan))
+
     def test_export_preserves_approved_neighbor_change(self):
         original=[
             lab("6gx","L2","litera",(10,10,20,25)),
