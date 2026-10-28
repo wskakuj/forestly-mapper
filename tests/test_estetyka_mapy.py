@@ -14,6 +14,46 @@ def label(name, rect, poly, leader=None):
 
 
 class AestheticTests(unittest.TestCase):
+    def test_verified_manual_exemplar_may_keep_both_existing_bbox_false_positives(self):
+        # Rzeczywisty przypadek 6s: operator rozsunął glify w GEO-MAP,
+        # lecz przybliżone prostokąty nadal na siebie nachodzą i opis
+        # nadal modelowo wystaje z poligonu. Taki jawny wzorzec musi
+        # zostać ZAPISANY, a dwie pozostałe uwagi jawnie raportowane.
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        lit={"id":"a:L2","wydzielenie":"a","rodzaj":"litera",
+             "tekst":"6s","prostokat":(80,30,95,48),
+             "poligon":poly,"wysiegnik":None}
+        desc={"id":"a:L3","wydzielenie":"a","rodzaj":"opis",
+              "tekst":"halizna|0.2477",
+              "prostokat":(85,25,120,80),"poligon":poly,
+              "wysiegnik":None}
+        manual_lit=dict(lit,prostokat=(77,65,92,83))
+        manual_desc=dict(desc,prostokat=(72,30,107,85))
+        before={tuple(sorted(e["elementy"]))+(e["typ"],)
+                for e in geo.waliduj_uklad([lit,desc])}
+        self.assertEqual(len(before),2)
+        still=geo.waliduj_uklad([manual_lit,manual_desc])
+        self.assertEqual(len(still),2)
+        result,report=aesthetic.dopracuj(
+            [lit,desc],[poly],nazwy={"a":"6s"},
+            maks_grup=0,maks_par=0,maks_trojek=0,
+            maks_kaskad=0,
+            wzorce={"a":[manual_lit,manual_desc]})
+        self.assertEqual(report["zastosowane_wzorce_reczne"],["6s"])
+        self.assertEqual(report["odrzucone_wzorce_reczne"],[])
+        self.assertEqual(report["przyjete_poprawki"],1)
+        self.assertEqual(result[0]["prostokat"],manual_lit["prostokat"])
+        self.assertEqual(result[1]["prostokat"],manual_desc["prostokat"])
+        self.assertEqual(len(geo.waliduj_uklad(result)),2)
+        warnings=report["zastosowane_wzorce_z_ostrzezeniami_modelu"]
+        self.assertEqual(len(warnings),1)
+        self.assertEqual(warnings[0]["wydzielenie"],"6s")
+        self.assertEqual(
+            {issue["typ"] for issue in warnings[0][
+                "pozostale_ostrzezenia_modelu"]},
+            {"napis_napis","poza_bez_wysiegnika"})
+        self.assertIn("6s",report["chronione_wydzielenia"])
+
     def test_human_approved_plan_removes_overlap_even_when_bbox_font_still_protrudes(self):
         poly=[(0,0),(100,0),(100,100),(0,100)]
         # Kolizja własnych L2/L3 i modelowo wystający narożnik L3.
