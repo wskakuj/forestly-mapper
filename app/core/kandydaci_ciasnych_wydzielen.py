@@ -133,31 +133,44 @@ def _lokalne_plany_waskiego_poligonu(grupa, *, maks_odleglosc=145.0,
         return []
     result=[]
     seen=set()
-    for side in ("lewo","prawo"):
-        sign=-1 if side=="lewo" else 1
+    for side in ("lewo","prawo","dol","gora"):
+        sign=-1 if side in ("lewo","dol") else 1
         for distance in (5.0,12.0,22.0,36.0):
-            dx=(x0-dlw/2-distance if sign<0
-                else x1+dlw/2+distance)
             for yf in (-.36,-.18,0.0,.18,.36):
-                cy=my+yf*(y1-y0)
+                if side in ("dol","gora"):
+                    dx=mx+yf*(x1-x0)
+                    cy=(y0-dlh/2-distance if sign<0
+                        else y1+dlh/2+distance)
+                    closer_y=(y0-lh/2-9 if sign<0
+                              else y1+lh/2+9)
+                    letter_centers=[
+                        (dx+d,closer_y)
+                        for d in (-dlw/2-lw/2-9,dlw/2+lw/2+9)]
+                    letter_centers += [
+                        (dx+d,cy+sign*(dlh/2+lh/2+8))
+                        for d in (-lw,0,lw)]
+                else:
+                    dx=(x0-dlw/2-distance if sign<0
+                        else x1+dlw/2+distance)
+                    cy=my+yf*(y1-y0)
+                    toward=(dx+sign*(dlw/2+lw/2+5)*(-1))
+                    letter_centers=[
+                        (toward,cy+d) for d in (-lh*.5,0,lh*.5)]
+                    letter_centers += [
+                        (x0-10-lw/2 if sign<0 else x1+10+lw/2,
+                         my+d*(y1-y0))
+                        for d in (-.25,0,.25)]
                 rd=engine.prost((dx,cy),(dlw,dlh))
-                if math.dist(_center(rd),(mx,my))>maks_odleglosc:
+                # Przy dlugim opisie srodek moze byc 170 m od
+                # wydzielenia, chociaz koniec GLIFU lezy zaledwie
+                # 5 m od jego granicy. Liczy sie dystans OBWIEDNI.
+                if engine.odleglosc_boxow(rd,(x0,y0,x1,y1))>maks_odleglosc:
                     continue
-                # L2 stawiaj po stronie własnego poligonu, obok
-                # prawdziwego L3; dawna lista tworzyła układy,
-                # w których litera była setki metrów od opisu.
-                toward=(rd[2]+lw/2+5 if sign<0
-                        else rd[0]-lw/2-5)
-                letter_centers=[
-                    (toward,cy+d) for d in (-lh*.5,0,lh*.5)]
-                letter_centers += [
-                    (x0-10-lw/2 if sign<0 else x1+10+lw/2,
-                     my+d*(y1-y0))
-                    for d in (-.25,0,.25)]
                 for lx,ly in letter_centers:
-                    if math.hypot(lx-mx,ly-my)>maks_odleglosc:
-                        continue
                     rl=engine.prost((lx,ly),(lw,lh))
+                    if engine.odleglosc_boxow(
+                            rl,(x0,y0,x1,y1))>maks_odleglosc:
+                        continue
                     if geo.prostokaty_koliduja(
                             engine.powieksz(rl,1.25),
                             engine.powieksz(rd,1.25)):
@@ -213,8 +226,9 @@ def wybierz_kandydatow(plans, remaining, polygon, *,
                 {e["rodzaj"] for e in plan}!={"litera","opis"}):
             rejected["brak_pary_L2_L3"]+=1
             continue
-        if any(math.dist(_center(e["prostokat"]),point)>
-               maks_odleglosc_srodka for e in plan):
+        if any(engine.odleglosc_boxow(
+                e["prostokat"],box)>maks_odleglosc_srodka
+                for e in plan):
             rejected["napisy_zbyt_daleko_od_wydzielenia"]+=1
             continue
         if any(e.get("wysiegnik") and
@@ -238,7 +252,7 @@ def wybierz_kandydatow(plans, remaining, polygon, *,
             "wygenerowanych":len(plans),
             "przeszlo_filtry":len(ranked),
             "odrzucone_powody":dict(rejected),
-            "maks_odleglosc_srodka_od_centrum_bbox_m":
+            "maks_odleglosc_obrysu_od_bbox_poligonu_m":
                 maks_odleglosc_srodka,
             "maks_dlugosc_wysiegnika_m":maks_dlugosc_wysiegnika})
     result=[]
@@ -374,7 +388,7 @@ def main(argv=None):
     p.add_argument("--wspolczynnik-oceny",type=float,default=.75)
     p.add_argument("--limit-opcji",type=int,default=96)
     p.add_argument("--maks-odleglosc",type=float,default=145.0,
-                   help="Maksymalna odleglosc srodka napisu od centrum bbox poligonu [m]")
+                   help="Maksymalna odleglosc prostokata napisu od bbox poligonu [m] (nie odleglosc jego srodka)")
     p.add_argument("--maks-wysiegnik",type=float,default=130.0,
                    help="Maksymalna dlugosc wysiegnika [m]")
     a=p.parse_args(argv)
