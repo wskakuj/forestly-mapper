@@ -1513,3 +1513,70 @@ ale **nie jest automatycznym uczeniem geometrii
 czcionek z jednego przypadku**. Dalsza generalizacja
 wymaga zmierzenia obrysów glifów/fontu GEO-MAP
 i testów na wielu poligonach.
+
+
+## 6gx — warianty testowe zamiast ślepego zwiększania kaskad
+
+Użytkownik potwierdził: mapa \`01_BYSŁAW_6S_Z_WZORCA_V2_TEST.MAP\`
+wyświetla dobrze **6s**. Raport
+\`BYSLAW_6S_Z_WZORCA_V2.json\` potwierdza
+\`zastosowane_wzorce_reczne=["6s"]\`, dwie nowe zmiany
+pozycji (łącznie 282 zmienione napisy). Model nadal
+zgłasza 6 problemów, gdyż konserwatywne obwiednie
+6s mimo poprawnego widoku dają dwa fałszywe alarmy.
+
+Kolejnym celem jest **6gx**, nadal zasłonięte własnym
+opisem. To nie taki sam przypadek jak 6s.
+Rzeczywisty kontur 6gx jest wąskim, wklęsłym pasem:
+około 217.3 x 139.1 m w obwiedni, ale z powierzchnią
+tylko około 2967.7 m²; L3 na 1:4000 ma według modelu
+około 27 m szerokości i ponad 200 m długości. Nawet
+modelowa obwiednia litery L2 (16.2 x 29.9 m) nie
+znajduje w próbkowanym wnętrzu pełnego prostokąta
+bez kolizji z krawędzią. Nie należy wymuszać pary
+bez wysięgników ani przenosić konkretnych współrzędnych 6s.
+
+Dodano \`app/core/kandydaci_ciasnych_wydzielen.py\`:
+- wczytuje **zatwierdzony JSON V2 z dobrym 6s**;
+- wybiera wyłącznie L2/L3 podanego wydzielenia
+  (domyślnie 6gx), generuje warianty istniejącym
+  silnikiem, w tym zewnętrzne ze **zwykłym prostym
+  wysięgnikiem**;
+- ocenia dwa poziomy ryzyka: kolizję pełnych
+  prostokątów i hipotetycznych mniejszych obrysów
+  \`0.75\` (wyłącznie na potrzeby RANKINGU);
+- ocenia też przecięcia wysięgników z innymi
+  napisami i ich długość, wybiera różne strony
+  wydzielenia, nie tylko 4 warianty o tej samej
+  pozycji;
+- tworzy *osobne*, oznaczone jako eksperymentalne
+  \`*.MAP\` i JSON podsumowujący. To NIE jest
+  zatwierdzony, automatyczny wynik;
+- używa produkcyjnego eksportera, który weryfikuje
+  po ponownym odczycie rzeczywistą pozycję każdego
+  zaktualizowanego L2/L3;
+- nie dopuszcza nadpisywania MAP, a w kopiach
+  nie przesuwa 6s, 3s ani żadnego innego wydzielenia.
+  Dodatkowe modelowane kolizje w 6gx i z sąsiadami
+  mogą jednak pozostać, dlatego operator musi
+  ocenić każdą propozycję WIZUALNIE.
+  
+Użytkownik uruchamia na Windows CMD:
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.kandydaci_ciasnych_wydzielen "01_BYSŁAW_z_opisami.MAP" --bazowy-json "BYSLAW_6S_Z_WZORCA_V2.json" --wydzielenie 6gx --ile 4 --prefix "BYSLAW_6GX_PROBA"
+\`\`\`
+
+Powstaną \`BYSLAW_6GX_PROBA_01.MAP\` ...
+\`BYSLAW_6GX_PROBA_04.MAP\` i
+\`BYSLAW_6GX_PROBA_ocena.json\`. Po obejrzeniu
+operator podaje, która wersja wygląda najlepiej
+albo co konkretnie jest z nią nie tak.
+Testowy współczynnik obrysu nie jest kalibracją
+rzeczywistego fontu Simplex.SHX; aby go
+zweryfikować, potrzebne będą kolejne
+ręcznie zaakceptowane przykłady / rzeczywisty
+pomiar konturów glifów w GEO-MAP.
