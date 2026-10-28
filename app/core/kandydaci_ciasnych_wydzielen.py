@@ -49,6 +49,7 @@ def ocen_plan(plan, pozostale, factor=.75):
     if not 0<factor<=1:
         raise ValueError("Wspolczynnik wizualny musi byc w (0,1]")
     hard=soft=lead_hits=0
+    crossing_leaders=existing_leader_through_text=0
     for e in plan:
         r=e["prostokat"]
         visual=_compact(r,factor)
@@ -58,9 +59,18 @@ def ocen_plan(plan, pozostale, factor=.75):
             if geo.prostokaty_koliduja(visual,f["prostokat"]):
                 soft+=1
             w=e.get("wysiegnik")
+            other_leader=f.get("wysiegnik")
             if w and geo.odcinek_przecina_prostokat(
                     *w, f["prostokat"],wnetrze=True):
                 lead_hits+=1
+            if other_leader and geo.odcinek_przecina_prostokat(
+                    *other_leader, r, wnetrze=True):
+                existing_leader_through_text+=1
+            if w and other_leader and geo.wysiegniki_koliduja(
+                    w, other_leader,
+                    to_samo_wydzielenie=(
+                        e["wydzielenie"]==f["wydzielenie"])):
+                crossing_leaders+=1
     own=0
     if len(plan)==2 and geo.prostokaty_koliduja(
             plan[0]["prostokat"],plan[1]["prostokat"]):
@@ -71,10 +81,14 @@ def ocen_plan(plan, pozostale, factor=.75):
         "konflikty_pelnych_prostokatow":hard,
         "konflikty_probnych_obwiedni":soft,
         "wysiegniki_przez_inne_napisy":lead_hits,
+        "przeciecia_z_cudzymi_wysiegnikami":crossing_leaders,
+        "cudze_wysiegniki_przez_nowe_napisy":existing_leader_through_text,
         "nakladanie_wlasnych_prostokatow":own,
         "dlugosc_wysiegnikow_m":round(leader_length,2),
         "ocena":round(150*own+120*soft+25*hard+
-                       130*lead_hits+0.09*leader_length,3)
+                       130*lead_hits+600*crossing_leaders+
+                       600*existing_leader_through_text+
+                       0.09*leader_length,3)
     }
 
 
@@ -91,19 +105,52 @@ def _rodzina(plan, polygon):
 
 
 def wybierz_kandydatow(plans, remaining, polygon, *,
-                       ile=4, factor=.75):
+                       ile=4, factor=.75,
+                       maks_odleglosc_srodka=145.0,
+                       maks_dlugosc_wysiegnika=130.0,
+                       diagnostyka=None):
     if ile<1:
         raise ValueError("Liczba prob musi byc dodatnia")
     ranked=[]
+    rejected=Counter()
+    box=engine.bbox(polygon)
+    point=_center(box)
     for plan in plans:
         if not plan or len({e["id"] for e in plan})!=len(plan):
+            rejected["niekompletny_plan"]+=1
+            continue
+        if (len(plan)!=2 or
+                {e["rodzaj"] for e in plan}!={"litera","opis"}):
+            rejected["brak_pary_L2_L3"]+=1
+            continue
+        if any(math.dist(_center(e["prostokat"]),point)>
+               maks_odleglosc_srodka for e in plan):
+            rejected["napisy_zbyt_daleko_od_wydzielenia"]+=1
+            continue
+        if any(e.get("wysiegnik") and
+               math.dist(*e["wysiegnik"])>
+               maks_dlugosc_wysiegnika for e in plan):
+            rejected["za_dlugi_wysiegnik"]+=1
             continue
         score=ocen_plan(plan,remaining,factor)
+        if (score["przeciecia_z_cudzymi_wysiegnikami"] or
+                score["cudze_wysiegniki_przez_nowe_napisy"] or
+                score["wysiegniki_przez_inne_napisy"]):
+            rejected["kolizja_z_istniejacymi_wysiegnikami_lub_napisami"]+=1
+            continue
         family=_rodzina(plan,polygon)
         identifier=tuple((e["id"],tuple(round(v,2) for v in e["prostokat"]))
                          for e in plan)
         ranked.append((score["ocena"],family,identifier,plan,score))
     ranked.sort(key=lambda t:(t[0],str(t[1]),t[2]))
+    if diagnostyka is not None:
+        diagnostyka.update({
+            "wygenerowanych":len(plans),
+            "przeszlo_filtry":len(ranked),
+            "odrzucone_powody":dict(rejected),
+            "maks_odleglosc_srodka_od_centrum_bbox_m":
+                maks_odleglosc_srodka,
+            "maks_dlugosc_wysiegnika_m":maks_dlugosc_wysiegnika})
     result=[]
     used=set()
     # Najpierw sprawdzamy różne strategie i strony wydzielenia.
@@ -141,7 +188,9 @@ def _zmiany_z_bazy(przed, obecne, plan):
 
 
 def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
-              ile=4, factor=.75, candidate_limit=96):
+              ile=4, factor=.75, candidate_limit=96,
+              maks_odleglosc_srodka=145.0,
+              maks_dlugosc_wysiegnika=130.0):
     mapa=onm.wczytaj_mape(mapa_path)
     data=json.loads(Path(baseline_json).read_text(encoding="utf-8"))
     skala=data["skala"]
@@ -164,10 +213,17 @@ def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
     plans=engine.opcje_wydzielenia(
         group,engine.Granice(boundaries),boundaries,
         limit=candidate_limit,ratunek=True)
+    diagnostics={}
     selected=wybierz_kandydatow(
-        plans,others,letter[0]["poligon"],ile=ile,factor=factor)
+        plans,others,letter[0]["poligon"],ile=ile,factor=factor,
+        maks_odleglosc_srodka=maks_odleglosc_srodka,
+        maks_dlugosc_wysiegnika=maks_dlugosc_wysiegnika,
+        diagnostyka=diagnostics)
     if not selected:
-        raise ValueError("Silnik nie utworzyl zadnych wariantow. Nic nie zapisano.")
+        raise ValueError(
+            "Brak wariantu 6gx spelniajacego warunki widocznosci,"
+            " odleglosci i braku przeciec wysiegnikow. Nic nie"
+            " zapisano. Szczegoly: "+str(diagnostics))
     summary={
         "status":"TYLKO DO OCENY W GEO-MAP - NIE JEST TO GOTOWA POPRAWKA",
         "wydzielenie":nazwa,
@@ -179,6 +235,7 @@ def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
             "RANKINGU. Nie zmienia czcionki, nie dowodzi braku "
             "kolizji i nie znosi wymogu oceny kartografa."),
         "liczba_planow_wygenerowanych":len(plans),
+        "filtry_jakosci":diagnostics,
         "warianty":[]
     }
     # Nie dopuszczaj nadpisywania starych testów nawet w razie
@@ -219,14 +276,22 @@ def main(argv=None):
     p.add_argument("--ile",type=int,default=4)
     p.add_argument("--wspolczynnik-oceny",type=float,default=.75)
     p.add_argument("--limit-opcji",type=int,default=96)
+    p.add_argument("--maks-odleglosc",type=float,default=145.0,
+                   help="Maksymalna odleglosc srodka napisu od centrum bbox poligonu [m]")
+    p.add_argument("--maks-wysiegnik",type=float,default=130.0,
+                   help="Maksymalna dlugosc wysiegnika [m]")
     a=p.parse_args(argv)
-    if not 0<a.wspolczynnik_oceny<=1 or a.limit_opcji<1 or a.ile<1:
+    if (not 0<a.wspolczynnik_oceny<=1 or a.limit_opcji<1 or a.ile<1
+            or a.maks_odleglosc<=0 or a.maks_wysiegnik<=0):
         p.error("Nieprawidlowe limity/wspolczynnik")
     result=przygotuj(a.mapa,a.bazowy_json,a.wydzielenie,a.prefix,
                      ile=a.ile,factor=a.wspolczynnik_oceny,
-                     candidate_limit=a.limit_opcji)
+                     candidate_limit=a.limit_opcji,
+                     maks_odleglosc_srodka=a.maks_odleglosc,
+                     maks_dlugosc_wysiegnika=a.maks_wysiegnik)
     print("KANDYDACI do recznej oceny:",len(result["warianty"]))
     print("Wygenerowane plany:",result["liczba_planow_wygenerowanych"])
+    print("Filtry:",result["filtry_jakosci"])
     for e in result["warianty"]:
         r=e["ryzyka"]
         print("  %s: %s / ryzyko wizualne=%s, pelne obrysy=%d,"
