@@ -104,6 +104,96 @@ def _rodzina(plan, polygon):
     return kinds,side
 
 
+def _lokalne_plany_waskiego_poligonu(grupa, *, maks_odleglosc=145.0,
+                                   maks_wysiegnik=130.0, limit=650):
+    """Bezpośrednia próba ZWARTYCH układów przy własnym konturze.
+
+    Ogólny silnik wymaga, aby cały długi prostokąt L3 nie przeciął
+    żadnego obiektu mapy. W gęstej mapie odrzuca przez to każdą
+    BLISKĄ propozycję, choć prawdziwe glify GEO-MAP zajmują mniejszy
+    obszar. Tutaj nie omijamy walidacji L2/L3 ani kolizji z cudzymi
+    napisami/wysięgnikami: jedynie przecięcia z podkładem mapy
+    pozostają do oceny kartografa w pliku eksperymentalnym.
+    """
+    if len(grupa)!=2:
+        return []
+    letter=next((e for e in grupa if e["rodzaj"]=="litera"),None)
+    desc=next((e for e in grupa if e["rodzaj"]=="opis"),None)
+    if letter is None or desc is None:
+        return []
+    poly=letter["poligon"]
+    x0,y0,x1,y1=engine.bbox(poly)
+    mx,my=_center((x0,y0,x1,y1))
+    dlw=desc["prostokat"][2]-desc["prostokat"][0]
+    dlh=desc["prostokat"][3]-desc["prostokat"][1]
+    lw=letter["prostokat"][2]-letter["prostokat"][0]
+    lh=letter["prostokat"][3]-letter["prostokat"][1]
+    targets=list(engine._cele(poly,n=11))
+    if not targets:
+        return []
+    result=[]
+    seen=set()
+    for side in ("lewo","prawo"):
+        sign=-1 if side=="lewo" else 1
+        for distance in (5.0,12.0,22.0,36.0):
+            dx=(x0-dlw/2-distance if sign<0
+                else x1+dlw/2+distance)
+            for yf in (-.36,-.18,0.0,.18,.36):
+                cy=my+yf*(y1-y0)
+                rd=engine.prost((dx,cy),(dlw,dlh))
+                if math.dist(_center(rd),(mx,my))>maks_odleglosc:
+                    continue
+                # L2 stawiaj po stronie własnego poligonu, obok
+                # prawdziwego L3; dawna lista tworzyła układy,
+                # w których litera była setki metrów od opisu.
+                toward=(rd[2]+lw/2+5 if sign<0
+                        else rd[0]-lw/2-5)
+                letter_centers=[
+                    (toward,cy+d) for d in (-lh*.5,0,lh*.5)]
+                letter_centers += [
+                    (x0-10-lw/2 if sign<0 else x1+10+lw/2,
+                     my+d*(y1-y0))
+                    for d in (-.25,0,.25)]
+                for lx,ly in letter_centers:
+                    if math.hypot(lx-mx,ly-my)>maks_odleglosc:
+                        continue
+                    rl=engine.prost((lx,ly),(lw,lh))
+                    if geo.prostokaty_koliduja(
+                            engine.powieksz(rl,1.25),
+                            engine.powieksz(rd,1.25)):
+                        continue
+                    nearest=sorted(targets,key=lambda target:(
+                        math.dist(target,(lx,ly))+
+                        math.dist(target,(dx,cy)),target))
+                    for target in nearest[:5]:
+                        pair=[]
+                        for e,r in ((letter,rl),(desc,rd)):
+                            fully_inside=geo.prostokat_w_poligonie(
+                                r,e["poligon"])
+                            leader=None if fully_inside else engine.lider(r,target)
+                            if leader and math.dist(*leader)>maks_wysiegnik:
+                                break
+                            pair.append({**e,"prostokat":r,
+                                         "wysiegnik":leader})
+                        if len(pair)!=2:
+                            continue
+                        if geo.waliduj_uklad(pair):
+                            continue
+                        signature=tuple(
+                            (e["id"],
+                             tuple(round(v,2) for v in e["prostokat"]),
+                             tuple(round(v,2) for v in e["wysiegnik"][1])
+                             if e.get("wysiegnik") else None)
+                            for e in pair)
+                        if signature in seen:
+                            continue
+                        seen.add(signature)
+                        result.append(pair)
+                        if len(result)>=limit:
+                            return result
+    return result
+
+
 def wybierz_kandydatow(plans, remaining, polygon, *,
                        ile=4, factor=.75,
                        maks_odleglosc_srodka=145.0,
@@ -210,10 +300,17 @@ def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
     objects=uk.wszystkie_poligony(mapa)
     boundaries=[part for obj in objects
                 for part in km.fragmenty_z_linii(obj["linie"])]
-    plans=engine.opcje_wydzielenia(
+    strict_plans=engine.opcje_wydzielenia(
         group,engine.Granice(boundaries),boundaries,
         limit=candidate_limit,ratunek=True)
-    diagnostics={}
+    local_plans=_lokalne_plany_waskiego_poligonu(
+        group,maks_odleglosc=maks_odleglosc_srodka,
+        maks_wysiegnik=maks_dlugosc_wysiegnika)
+    plans=local_plans+strict_plans
+    diagnostics={
+        "plany_ogolnego_silnika":len(strict_plans),
+        "plany_lokalne_przy_poligonie":len(local_plans)
+    }
     selected=wybierz_kandydatow(
         plans,others,letter[0]["poligon"],ile=ile,factor=factor,
         maks_odleglosc_srodka=maks_odleglosc_srodka,
@@ -221,9 +318,9 @@ def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
         diagnostyka=diagnostics)
     if not selected:
         raise ValueError(
-            "Brak wariantu 6gx spelniajacego warunki widocznosci,"
-            " odleglosci i braku przeciec wysiegnikow. Nic nie"
-            " zapisano. Szczegoly: "+str(diagnostics))
+            "Nie znaleziono czytelnego wariantu 6gx blisko poligonu,"
+            " bez przeciec z cudzymi wysiegnikami i napisami."
+            " Nic nie zapisano. Szczegoly: "+str(diagnostics))
     summary={
         "status":"TYLKO DO OCENY W GEO-MAP - NIE JEST TO GOTOWA POPRAWKA",
         "wydzielenie":nazwa,
