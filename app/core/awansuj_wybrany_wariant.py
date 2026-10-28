@@ -120,7 +120,6 @@ def awansuj(mapa_zrodlowa, raport_bazowy, wybrana_mapa,
     raw_map=onm.wczytaj_mape(source)
     example=onm.wczytaj_mape(choice)
     _sprawdz_nietekstowe_linie(raw_map,example)
-    original,_=dm.elementy_z_mapy(raw_map,4000,2.5) if False else (None,None)
     base=json.loads(Path(raport_bazowy).read_text(encoding="utf-8"))
     scale=base["skala"]
     mm=base["wysokosc_mm"]
