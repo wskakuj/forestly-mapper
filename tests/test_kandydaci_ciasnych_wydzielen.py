@@ -118,9 +118,8 @@ class CandidatesTests(unittest.TestCase):
         self.assertTrue(all(not k.geo.waliduj_uklad(plan)
                             for plan in plans))
         bounds=k.engine.bbox(poly)
-        center=k._center(bounds)
         self.assertTrue(all(
-            k.math.dist(k._center(e["prostokat"]),center)<=145
+            k.engine.odleglosc_boxow(e["prostokat"],bounds)<=145
             for plan in plans for e in plan))
         self.assertTrue(all(
             not e["wysiegnik"] or
