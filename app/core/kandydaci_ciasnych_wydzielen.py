@@ -1,0 +1,241 @@
+# -*- coding: utf-8 -*-
+"""Eksperymentalne warianty dla ciasnego wydzielenia GEO-MAP.
+
+Cel: znaleźć kilka rzeczywiście różnych, czytelnych pozycji L2/L3
+w bardzo wąskim poligonie (np. 6gx) i oddać je do oceny w GEO-MAP.
+Nigdy nie nadpisuje źródła ani nie uznaje uproszczonej obwiedni
+fontu za rzeczywiste glify. Tylko wskazane L2/L3 są przesuwane.
+
+Celowo osobny tryb, NIE automatyczna akceptacja: dla 6gx żaden
+niewielki prostokąt pełnego fontu nie mieści się we wnętrzu
+wąskiego poligonu; potrzebne mogą być proste wysięgniki.
+"""
+import argparse
+from collections import Counter
+import copy
+import json
+from pathlib import Path
+import math
+
+from app.core import diagnostyka_map as dm
+from app.core import eksport_propozycji_map as export
+from app.core import geometria_ukladu as geo
+from app.core import kontury_map as km
+from app.core import opisy_na_mape as onm
+from app.core import silnik_grupowy as engine
+from app.core import uklad_opisow as uk
+from app.core import wznow_raport as resume
+
+
+def _center(r):
+    return ((r[0]+r[2])/2,(r[1]+r[3])/2)
+
+
+def _compact(r, factor):
+    """WYŁĄCZNIE eksperymentalna miara ryzyka, NIE geometria MAP."""
+    cx,cy=_center(r)
+    return (cx-(r[2]-r[0])*factor/2,
+            cy-(r[3]-r[1])*factor/2,
+            cx+(r[2]-r[0])*factor/2,
+            cy+(r[3]-r[1])*factor/2)
+
+
+def ocen_plan(plan, pozostale, factor=.75):
+    """Wyżej karz kolizje glifów, niż konserwatywne prostokąty.
+
+    Factor poniżej 1 jest PROBĄ wizualnego zajęcia miejsca, nie
+    skalowaniem fontu i nie może automatycznie zatwierdzać mapy.
+    """
+    if not 0<factor<=1:
+        raise ValueError("Wspolczynnik wizualny musi byc w (0,1]")
+    hard=soft=lead_hits=0
+    for e in plan:
+        r=e["prostokat"]
+        visual=_compact(r,factor)
+        for f in pozostale:
+            if geo.prostokaty_koliduja(r,f["prostokat"]):
+                hard+=1
+            if geo.prostokaty_koliduja(visual,f["prostokat"]):
+                soft+=1
+            w=e.get("wysiegnik")
+            if w and geo.odcinek_przecina_prostokat(
+                    *w, f["prostokat"],wnetrze=True):
+                lead_hits+=1
+    own=0
+    if len(plan)==2 and geo.prostokaty_koliduja(
+            plan[0]["prostokat"],plan[1]["prostokat"]):
+        own=1
+    leader_length=sum(math.dist(*e["wysiegnik"])
+                      for e in plan if e.get("wysiegnik"))
+    return {
+        "konflikty_pelnych_prostokatow":hard,
+        "konflikty_probnych_obwiedni":soft,
+        "wysiegniki_przez_inne_napisy":lead_hits,
+        "nakladanie_wlasnych_prostokatow":own,
+        "dlugosc_wysiegnikow_m":round(leader_length,2),
+        "ocena":round(150*own+120*soft+25*hard+
+                       130*lead_hits+0.09*leader_length,3)
+    }
+
+
+def _rodzina(plan, polygon):
+    desc=next((e for e in plan if e["rodzaj"]=="opis"),plan[-1])
+    c=_center(desc["prostokat"])
+    b=engine.bbox(polygon)
+    bx,by=_center(b)
+    dx,dy=c[0]-bx,c[1]-by
+    side=("prawo" if dx>0 else "lewo") if abs(dx)>abs(dy) else (
+        "gora" if dy>0 else "dol")
+    kinds=tuple(sorted(e["rodzaj"] for e in plan if e.get("wysiegnik")))
+    return kinds,side
+
+
+def wybierz_kandydatow(plans, remaining, polygon, *,
+                       ile=4, factor=.75):
+    if ile<1:
+        raise ValueError("Liczba prob musi byc dodatnia")
+    ranked=[]
+    for plan in plans:
+        if not plan or len({e["id"] for e in plan})!=len(plan):
+            continue
+        score=ocen_plan(plan,remaining,factor)
+        family=_rodzina(plan,polygon)
+        identifier=tuple((e["id"],tuple(round(v,2) for v in e["prostokat"]))
+                         for e in plan)
+        ranked.append((score["ocena"],family,identifier,plan,score))
+    ranked.sort(key=lambda t:(t[0],str(t[1]),t[2]))
+    result=[]
+    used=set()
+    # Najpierw sprawdzamy różne strategie i strony wydzielenia.
+    for row in ranked:
+        if row[1] not in used:
+            result.append(row)
+            used.add(row[1])
+            if len(result)>=ile:
+                return result
+    for row in ranked:
+        if len(result)>=ile:
+            break
+        if row not in result:
+            result.append(row)
+    return result
+
+
+def _zmiany_z_bazy(przed, obecne, plan):
+    by_id={e["id"]:e for e in przed}
+    updates={e["id"]:e for e in plan}
+    out=[]
+    for e in obecne:
+        original=by_id[e["id"]]
+        new=updates.get(e["id"],e)
+        if (max(abs(a-b) for a,b in zip(
+                original["prostokat"],new["prostokat"]))<1e-6
+                and original.get("wysiegnik")==new.get("wysiegnik")):
+            continue
+        out.append({
+            "id":e["id"],"tekst":e["tekst"],"rodzaj":e["rodzaj"],
+            "przed":list(original["prostokat"]),
+            "po":list(new["prostokat"]),
+            "wysiegnik":new.get("wysiegnik")})
+    return out
+
+
+def przygotuj(mapa_path, baseline_json, nazwa, prefix, *,
+              ile=4, factor=.75, candidate_limit=96):
+    mapa=onm.wczytaj_mape(mapa_path)
+    data=json.loads(Path(baseline_json).read_text(encoding="utf-8"))
+    skala=data["skala"]
+    h=data["wysokosc_mm"]
+    original,_=dm.elementy_z_mapy(mapa,skala,h)
+    current,_=resume.odtworz(original,mapa,skala,h,baseline_json)
+    letter=[e for e in current if
+            e["rodzaj"]=="litera" and
+            e["tekst"].casefold()==nazwa.casefold()]
+    if len(letter)!=1:
+        raise ValueError("Wydzielenie A1 musi byc jednoznaczne: "+nazwa)
+    key=letter[0]["wydzielenie"]
+    group=[e for e in current if e["wydzielenie"]==key]
+    if len(group)!=2:
+        raise ValueError("Oczekiwano pary L2/L3 w wydzieleniu: "+nazwa)
+    others=[e for e in current if e["wydzielenie"]!=key]
+    objects=uk.wszystkie_poligony(mapa)
+    boundaries=[part for obj in objects
+                for part in km.fragmenty_z_linii(obj["linie"])]
+    plans=engine.opcje_wydzielenia(
+        group,engine.Granice(boundaries),boundaries,
+        limit=candidate_limit,ratunek=True)
+    selected=wybierz_kandydatow(
+        plans,others,letter[0]["poligon"],ile=ile,factor=factor)
+    if not selected:
+        raise ValueError("Silnik nie utworzyl zadnych wariantow. Nic nie zapisano.")
+    summary={
+        "status":"TYLKO DO OCENY W GEO-MAP - NIE JEST TO GOTOWA POPRAWKA",
+        "wydzielenie":nazwa,
+        "uuid":key,
+        "mapa_bazowa":str(baseline_json),
+        "model_obwiedni_wizualnej":factor,
+        "ostrzezenie":(
+            "Wspolczynnik jest hipotetyczny i sluzy tylko do "
+            "RANKINGU. Nie zmienia czcionki, nie dowodzi braku "
+            "kolizji i nie znosi wymogu oceny kartografa."),
+        "liczba_planow_wygenerowanych":len(plans),
+        "warianty":[]
+    }
+    # Nie dopuszczaj nadpisywania starych testów nawet w razie
+    # wcześniejszego przerwania działania programu.
+    destination=Path(prefix)
+    names=[destination.with_name(
+        destination.name+"_"+str(i).zfill(2)+".MAP")
+        for i in range(1,len(selected)+1)]
+    detail=destination.with_name(destination.name+"_ocena.json")
+    if any(p.exists() for p in names+[detail]):
+        raise FileExistsError("Pliki testowe juz istnieja: podaj nowy --prefix")
+    for idx,(_,family,_,plan,score) in enumerate(selected):
+        report=copy.deepcopy(data)
+        report["zmiany"]=_zmiany_z_bazy(original,current,plan)
+        # To jest jedynie obiekt pośredni dla istniejącego eksportera
+        # zapewniającego bezpieczny zapis offsetów i round-trip.
+        export.eksportuj_kopie(mapa_path,report,names[idx])
+        summary["warianty"].append({
+            "numer":idx+1,"plik":str(names[idx]),
+            "rodzina":{"wysiegniki":family[0],"strona":family[1]},
+            "ryzyka":score,
+            "pozycje":[{"id":e["id"],"rodzaj":e["rodzaj"],
+                        "srodek":list(_center(e["prostokat"])),
+                        "wysiegnik":e.get("wysiegnik")}
+                       for e in plan]})
+    detail.write_text(json.dumps(summary,ensure_ascii=False,indent=2),
+                      encoding="utf-8")
+    return summary
+
+
+def main(argv=None):
+    p=argparse.ArgumentParser(
+        description="4 niezalezne kopie GEO-MAP dla trudnego wydzielenia (TYLKO DO OCENY)")
+    p.add_argument("mapa")
+    p.add_argument("--bazowy-json",required=True)
+    p.add_argument("--wydzielenie",default="6gx")
+    p.add_argument("--prefix",default="BYSLAW_6GX_KANDYDAT")
+    p.add_argument("--ile",type=int,default=4)
+    p.add_argument("--wspolczynnik-oceny",type=float,default=.75)
+    p.add_argument("--limit-opcji",type=int,default=96)
+    a=p.parse_args(argv)
+    if not 0<a.wspolczynnik_oceny<=1 or a.limit_opcji<1 or a.ile<1:
+        p.error("Nieprawidlowe limity/wspolczynnik")
+    result=przygotuj(a.mapa,a.bazowy_json,a.wydzielenie,a.prefix,
+                     ile=a.ile,factor=a.wspolczynnik_oceny,
+                     candidate_limit=a.limit_opcji)
+    print("KANDYDACI do recznej oceny:",len(result["warianty"]))
+    print("Wygenerowane plany:",result["liczba_planow_wygenerowanych"])
+    for e in result["warianty"]:
+        r=e["ryzyka"]
+        print("  %s: %s / ryzyko wizualne=%s, pelne obrysy=%d,"
+              " wysiegniki przez inne napisy=%d" % (
+            e["numer"],e["plik"],r["konflikty_probnych_obwiedni"],
+            r["konflikty_pelnych_prostokatow"],
+            r["wysiegniki_przez_inne_napisy"]))
+    print("UWAGA: kopie eksperymentalne. Ostateczna decyzja tylko w GEO-MAP.")
+
+
+if __name__=="__main__":
+    main()
