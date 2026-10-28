@@ -131,6 +131,24 @@ class CandidatesTests(unittest.TestCase):
             k.geo.punkt_w_poligonie(e["wysiegnik"][1],poly)
             for plan in plans for e in plan))
 
+    def test_long_text_can_be_close_to_border_even_if_center_far(self):
+        poly=[(0,0),(220,0),(220,120),(0,120)]
+        letter=lab("6gx","L2","litera",(110,-25,126,-5))
+        desc=lab("6gx","L3","opis",(100,-220,127,-5))
+        score={}
+        chosen=k.wybierz_kandydatow(
+            [[letter,desc]],[],poly,ile=1,
+            maks_odleglosc_srodka=30,
+            maks_dlugosc_wysiegnika=130,
+            diagnostyka=score)
+        self.assertEqual(len(chosen),1)
+        self.assertEqual(score["przeszlo_filtry"],1)
+        # Centrum tekstu 107 m od poligonu, ale krawedz
+        # obrysu oddalona jest o zaledwie 5 m.
+        self.assertGreater(k.math.dist(
+            k._center(desc["prostokat"]),k._center(k.engine.bbox(poly))),
+            100)
+
     def test_export_preserves_approved_neighbor_change(self):
         original=[
             lab("6gx","L2","litera",(10,10,20,25)),
@@ -178,6 +196,8 @@ class CandidatesTests(unittest.TestCase):
                   patch.object(k.uk,"wszystkie_poligony",return_value=[]),
                   patch.object(k.engine,"opcje_wydzielenia",
                                return_value=[proposal]),
+                  patch.object(k,"_lokalne_plany_waskiego_poligonu",
+                               return_value=[]),
                   patch.object(k.export,"eksportuj_kopie",
                                side_effect=mock_export)):
                 result=k.przygotuj(
