@@ -1633,3 +1633,67 @@ Kandydaci pozostają eksperymentalni, bez gwarancji,
 Jeżeli nie zostanie żaden, trzeba zmienić **sposób
 generowania lokalnych wariantów**, nie luzować w ciemno
 warunków dla znanych źle wyglądających położeń.
+
+
+## 6gx — dlaczego 27/27 wariantów było „za daleko” i nowy lokalny sampler
+
+Użytkownik uruchomił \`BYSLAW_6GX_BEZ_KRZYZOWAN_V2\`.
+Wynik:
+\`wygenerowanych=27,przeszlo_filtry=0,
+odrzucone_powody={"napisy_zbyt_daleko_od_wydzielenia":27}\`.
+Nie powstały pliki MAP, co jest poprawną ochroną przed
+publikowaniem poprzednio zgłoszonych złych propozycji.
+
+**Przyczyna była podwójna:**
+1. Ogólny generator sprawdza przecięcie pełnych,
+   konserwatywnie oszacowanych prostokątów litery i
+   długiego opisu z granicami WSZYSTKICH poligonów.
+   W gęstej mapie BYSŁAW odrzucało to bliskie
+   miejsca; zewnętrzne przesunięcia nie były
+   realistycznymi planami kartograficznymi.
+2. Filtr \`--maks-odleglosc 145\` mierzył odległość
+   **środka** obrysu od **środka** bbox wydzielenia.
+   Opis \`teren zabudowany, podwórko|1.1267\` ma
+   modelowy wymiar bliski 27 × 216 m, więc nawet
+   etykieta stojąca kilkanaście metrów przy granicy
+   może mieć środek oddalony o ponad 145 m.
+
+**Naprawa w osobnym trybie eksperymentalnym:**
+- dodać sampler blisko boków konturu oraz **nad i pod**
+  konturem, z obiema etykietami we wspólnym układzie;
+- cele prostych wysięgników wybierać wyłącznie
+  z prawdziwego wnętrza wydzielenia;
+- walidować parę L2/L3, unikać wzajemnego nachodzenia
+  i złych startów oraz ograniczać długość wysięgnika;
+- odległość 145 m oceniać od **najbliższych krawędzi
+  obrysu napisu i bbox wydzielenia**. Odległość
+  do środka prostokąta nie ma tu sensu;
+- filtr odrzucający przecięcia z istniejącymi
+  napisami i wysięgnikami (np. 6fx) pozostaje.
+- sprawdzanie przecięć z podkładem GIS w nowych
+  kandydatach jest tylko informacyjne, nie można
+  na tej podstawie ogłaszać automatycznego sukcesu.
+- jeśli i ten sampler nie znajdzie układu
+  akceptowalnego na rzeczywistej mapie,
+  preferowana jest próba ręcznego ustawienia samego
+  6gx i porównanie MAP, tak jak dla 6s.
+
+Regresje: test lokalnego samplera dla bardzo długiego
+L3 i wąskiego poligonu, test **rzeczywistego konturu
+6gx BYSŁAW** oraz test odległości obwiedni tekstu.
+Zasady zapisu, brak nadpisywania i ochrona zaakceptowanego
+6s pozostają bez zmian.
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.kandydaci_ciasnych_wydzielen "01_BYSŁAW_z_opisami.MAP" --bazowy-json "BYSLAW_6S_Z_WZORCA_V2.json" --wydzielenie 6gx --ile 4 --limit-opcji 144 --maks-odleglosc 145 --maks-wysiegnik 130 --prefix "BYSLAW_6GX_LOKALNE_V3"
+\`\`\`
+
+Wyniki to \`BYSLAW_6GX_LOKALNE_V3_01.MAP\` itd.
+i \`BYSLAW_6GX_LOKALNE_V3_ocena.json\` (jeśli
+pozostaną kandydaci). Brak możliwości znalezienia
+rozsądnego planu kończy się krótką diagnozą
+\`BRAK KANDYDATOW\`, bez długiego tracebacku
+i bez wygenerowania złej kopii.
