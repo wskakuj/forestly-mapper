@@ -1697,3 +1697,67 @@ pozostaną kandydaci). Brak możliwości znalezienia
 rozsądnego planu kończy się krótką diagnozą
 \`BRAK KANDYDATOW\`, bez długiego tracebacku
 i bez wygenerowania złej kopii.
+
+
+## 6gx: wybrany wariant 02, bez ponownego szukania pozycji
+
+Użytkownik wybrał \`BYSLAW_6GX_LOKALNE_V3_02.MAP\`
+jako **najlepszy** z czterech wariantów (nie mylić
+z ostatecznym zatwierdzeniem kartograficznym).
+Przekazał samą mapę 02 i raport
+\`BYSLAW_6GX_LOKALNE_V3_ocena.json\`.
+
+Wariant 02:
+- lokalizacja: nad własnym konturem (\`gora\`);
+- dwa proste wysięgniki o sumarycznej długości
+  53.55 m, oba wskazują ten sam punkt znajdujący
+  się w granicach własnego poligonu;
+- modelowe kolizje L2/L3 z innymi napisami: 0,
+  przecięcia z innymi wysięgnikami: 0;
+- w starej bazie 6gx L2/L3 bez odpowiednich
+  wysięgników miały złą wzajemną czytelność.
+
+Zweryfikowano oryginalny i przesłany MAP:
+- identyczne 2393 UUID wszystkich obiektów;
+- po kolei identyczne 43654 linie (oprócz
+  odświeżonego nagłówka CHK i 284 L2/L3);
+- żadna geometria poligonu, tekst, obrót ani
+  skala fontu nie zmieniły się;
+- 282 zmiany wynikające z
+  \`BYSLAW_6S_Z_WZORCA_V2.json\` zachowane
+  z dokładnością zapisu GEO-MAP;
+- dokładnie DWIE nowe linie 6gx: L2 i L3.
+
+Dodano \`app/core/awansuj_wybrany_wariant.py\`:
+- przyjmuje wybraną prywatną kopię MAP **wyłącznie**
+  po zweryfikowaniu wszystkich innych pozycji
+  względem pełnego bazowego JSON;
+- nie przyjmuje dodatkowych zmian obiektów,
+  metadanych, konturów, fontów lub innych napisów;
+- wymaga prawidłowego celu obu wysięgników i
+  braku przecięć z cudzymi napisami/wysięgnikami;
+- dopuszcza zachowanie dotychczasowych fałszywie
+  dodatnich ostrzeżeń modelu, jak w zatwierdzonym 6s,
+  ale zakazuje nowych problemów obejmujących
+  inne wydzielenia;
+- tworzy nowy pełny kontynuowalny raport JSON,
+  z metrykami geometrii i GIS przeliczonymi od nowa;
+- opcjonalnie kopiuje 1:1 wybrany plik MAP pod
+  nową nazwą; nigdy nie nadpisuje oryginału;
+- pozostawia status wybranej wersji jako
+  \`NAJLEPSZY_WYBRANY_DO_DALSZEJ_OCENY\` do
+  końcowej inspekcji w GEO-MAP.
+
+\`\`\`cmd
+cd /d C:\Users\niepy\Desktop\ForestlyMapper-test
+git pull --ff-only
+py -m unittest discover -s tests -v
+py -m app.core.awansuj_wybrany_wariant "01_BYSŁAW_z_opisami.MAP" --bazowy-json "BYSLAW_6S_Z_WZORCA_V2.json" --wybrany-map "BYSLAW_6GX_LOKALNE_V3_02.MAP" --wydzielenie 6gx --json "BYSLAW_6S_6GX_WYBRANE.json" --map-kopia "01_BYSŁAW_6S_6GX_WYBRANE.MAP"
+\`\`\`
+
+W dalszych wywołaniach \`diag_silnik_grupowy\`
+używać \`--bazowy-json "BYSLAW_6S_6GX_WYBRANE.json"\`
+oraz:
+\`--chron-estetyka 6gx 6s 3s 4c 4a 7b 7a 7d 8j 5g 5h 10r 10o 07h\`
+— tak, aby silnik nie przestawił ponownie pozycji
+wzorcowych przed ich wyraźnym odblokowaniem.
