@@ -12,6 +12,7 @@ import json
 import re
 
 from app.core import geometria_ukladu as geo
+from app.core import kontury_map as km
 from app.core import opisy_na_mape as onm
 from app.core import uklad_opisow as uk
 
@@ -85,6 +86,20 @@ def elementy_z_mapy(mapa, skala=None, wysokosc_mm=2.5):
         punkty = o["punkty"]
         if len(punkty) < 3:
             continue
+        model = km.model_wydzielenia(blok)
+        if model["kompletne"]:
+            # Nie spłaszczaj rozłącznych części wydzielenia do jednego
+            # fikcyjnego poligonu; również pojedynczy pierścień zachowuje
+            # zgodność z istniejącymi testami geometrii.
+            poligon = (model if len(model["kontury"]) > 1
+                       else model["kontury"][0])
+        else:
+            # Brak zamknięcia to niepewna topologia: zachowujemy
+            # dotychczasowy obrys, jawnie zgłaszając ostrzeżenie.
+            poligon = punkty
+            ostrzezenia.append({"typ": "niepelne_kontury",
+                                "uuid": ident, "liczba_fragmentow":
+                                model["liczba_fragmentow"]})
         baza = uk.srodek_bazowy(punkty)
         for rodzaj, tekst, nr in (("litera", litera, 2),
                                  ("opis", opis if "|" in opis else "", 3)):
@@ -112,7 +127,7 @@ def elementy_z_mapy(mapa, skala=None, wysokosc_mm=2.5):
             out.append({"id": ident + ":L" + str(nr),
                         "uuid": ident, "wydzielenie": ident,
                         "rodzaj": rodzaj, "tekst": tekst,
-                        "prostokat": prost, "poligon": punkty,
+                        "prostokat": prost, "poligon": poligon,
                         "wysiegnik": wys})
             if len(l) >= 9 and l[6] not in ("69", "133"):
                 ostrzezenia.append({"typ": "nieznany_styl_wysiegnika",
