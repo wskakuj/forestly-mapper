@@ -42,6 +42,59 @@ class CandidatesTests(unittest.TestCase):
         self.assertEqual(len(selected),3)
         self.assertEqual(len({x[1] for x in selected}),3)
 
+    def test_reject_crossing_with_existing_6fx_leader(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        letter=lab("6gx","L2","litera",(20,20,30,35))
+        desc=lab("6gx","L3","opis",(70,60,85,85))
+        desc["wysiegnik"]=((77.5,85),(77.5,15))
+        other=lab("6fx","L3","opis",(0,0,10,10))
+        other["wysiegnik"]=((5,5),(100,75))
+        risks=k.ocen_plan([letter,desc],[other])
+        self.assertGreater(risks["przeciecia_z_cudzymi_wysiegnikami"],0)
+        diagnosis={}
+        selected=k.wybierz_kandydatow(
+            [[letter,desc]],[other],poly,diagnostyka=diagnosis)
+        self.assertEqual(selected,[])
+        self.assertEqual(
+            diagnosis["odrzucone_powody"][
+                "kolizja_z_istniejacymi_wysiegnikami_lub_napisami"],1)
+
+    def test_reject_when_existing_6fx_leader_cuts_new_text(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        letter=lab("6gx","L2","litera",(20,20,30,35))
+        desc=lab("6gx","L3","opis",(70,60,85,85))
+        other=lab("6fx","L3","opis",(0,0,10,10))
+        other["wysiegnik"]=((5,5),(90,95))
+        risks=k.ocen_plan([letter,desc],[other])
+        self.assertGreater(risks["cudze_wysiegniki_przez_nowe_napisy"],0)
+        self.assertFalse(k.wybierz_kandydatow([[letter,desc]],[other],poly))
+
+    def test_reject_remote_labels_but_keep_nearby_alternative(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        letter=lab("6gx","L2","litera",(20,20,30,35))
+        near=lab("6gx","L3","opis",(75,70,90,90))
+        far=lab("6gx","L3","opis",(500,500,515,520))
+        report={}
+        selected=k.wybierz_kandydatow(
+            [[letter,far],[letter,near]],[],poly,
+            diagnostyka=report,maks_odleglosc_srodka=120)
+        self.assertEqual(len(selected),1)
+        self.assertEqual(selected[0][3][1]["prostokat"],near["prostokat"])
+        self.assertEqual(
+            report["odrzucone_powody"][
+                "napisy_zbyt_daleko_od_wydzielenia"],1)
+
+    def test_reject_unreasonably_long_leader(self):
+        poly=[(0,0),(100,0),(100,100),(0,100)]
+        letter=lab("6gx","L2","litera",(20,20,30,35))
+        desc=lab("6gx","L3","opis",(60,60,80,80))
+        desc["wysiegnik"]=((70,80),(500,500))
+        report={}
+        self.assertEqual(
+            k.wybierz_kandydatow(
+                [[letter,desc]],[],poly,diagnostyka=report),[])
+        self.assertEqual(report["odrzucone_powody"]["za_dlugi_wysiegnik"],1)
+
     def test_export_preserves_approved_neighbor_change(self):
         original=[
             lab("6gx","L2","litera",(10,10,20,25)),
@@ -93,7 +146,8 @@ class CandidatesTests(unittest.TestCase):
                                side_effect=mock_export)):
                 result=k.przygotuj(
                     Path(td)/"source.MAP",base,"6gx",
-                    str(Path(td)/"proba"),ile=1)
+                    str(Path(td)/"proba"),ile=1,
+                    maks_dlugosc_wysiegnika=220)
             self.assertEqual(len(copied),1)
             changes={r["id"]:r for r in copied[0][1]["zmiany"]}
             self.assertEqual(changes["6s:L2"]["po"],[55,50,70,70])
